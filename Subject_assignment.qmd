@@ -74,16 +74,21 @@ assign_subject_num <- function(df, seed = 1, grouping_var, groups, n_cages_per_g
 }
 ```
 
-Read in subject meta data file
+Read in subject meta data file.
 ```{r use assign_subject_num function}
-subjects <- read_csv("/Users/erc2866/Library/CloudStorage/Box-Box/Nixon Lab/Binge Files/MGD/MGD5/MGD5_unassigned_subjects.csv")
+subjects <- read_csv("data/MGD5_unassigned_subjects.csv")
 ```
 
-Use `assign_subject_num()` function to pseudo-randomly assign treatment groups and subject numbers
+Use `assign_subject_num()` function to pseudo-randomly assign treatment groups and subject numbers.
 ```{r}
 assigned_subjects <- assign_subject_num(df = subjects, seed = 435, grouping_var = sex, 
                                         groups = c("PLX-EtOH", "PLX-CON", "VEH-EtOH", "VEH-CON"),
                                         n_cages_per_group = 2)
 
 assigned_subjects
+```
+
+Save **assigned_subjects** to files.
+```{r}
+write_csv(assigned_subjects, "data/MGD5_subjects.csv")
 ```

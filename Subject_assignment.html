@@ -165,9 +165,9 @@ erika.carlson@utexas.edu</p>
 <span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>  <span class="fu">return</span>(assigned_df)</span>
 <span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
-<p>Read in subject meta data file</p>
+<p>Read in subject meta data file.</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>subjects <span class="ot">&lt;-</span> <span class="fu">read_csv</span>(<span class="st">"/Users/erc2866/Library/CloudStorage/Box-Box/Nixon Lab/Binge Files/MGD/MGD5/MGD5_unassigned_subjects.csv"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>subjects <span class="ot">&lt;-</span> <span class="fu">read_csv</span>(<span class="st">"data/MGD5_unassigned_subjects.csv"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>Rows: 32 Columns: 3
 ── Column specification ────────────────────────────────────────────────────────
@@ -179,7 +179,7 @@ dbl (2): temp_subject, cage_num
 ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.</code></pre>
 </div>
 </div>
-<p>Use <code>assign_subject_num()</code> function to pseudo-randomly assign treatment groups and subject numbers</p>
+<p>Use <code>assign_subject_num()</code> function to pseudo-randomly assign treatment groups and subject numbers.</p>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>assigned_subjects <span class="ot">&lt;-</span> <span class="fu">assign_subject_num</span>(<span class="at">df =</span> subjects, <span class="at">seed =</span> <span class="dv">435</span>, <span class="at">grouping_var =</span> sex, </span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>                                        <span class="at">groups =</span> <span class="fu">c</span>(<span class="st">"PLX-EtOH"</span>, <span class="st">"PLX-CON"</span>, <span class="st">"VEH-EtOH"</span>, <span class="st">"VEH-CON"</span>),</span>
@@ -205,6 +205,10 @@ dbl (2): temp_subject, cage_num
 10      10 M            1 PLX-EtOH         5            2
 # ℹ 22 more rows</code></pre>
 </div>
+</div>
+<p>Save <strong>assigned_subjects</strong> to files.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="fu">write_csv</span>(assigned_subjects, <span class="st">"data/MGD5_subjects.csv"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 </section>
 </section>
