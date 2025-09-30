@@ -132,44 +132,70 @@ erika.carlson@utexas.edu</p>
 <p><code>assign_subject_num()</code> is a function that pseudo-randomly assigns a treatment group and number to each cage, then populates subject numbers based on the cage number.</p>
 <p>It satisfies the following conditions:</p>
 <ul>
-<li>Equal number of treatment assignments per grouping variable (e.g., sex)</li>
+<li>Separate treatment assignments per grouping variable (e.g., sex)</li>
 <li>Cage mates have sequential numbers</li>
 </ul>
 <p>It has the following arguments:</p>
 <ul>
 <li><code>df</code> is a “.csv” with subject meta data, including <strong>cage_num</strong> column</li>
 <li><code>seed</code> sets seed for reproducibility</li>
-<li><code>grouping_var</code> specifies column of <strong>df</strong> to group by (e.g., <strong>sex</strong>) prior to assignments</li>
-<li><code>groups</code> is a vector specifying treatment groups</li>
-<li><code>n_cages_per_group</code> specifies number of cages per group (half # of subjects), can be the same for all groups (e.g., 2) or a vector of numbers for custom assignment (e.g., c(2, 4, 3, 4))</li>
+<li><code>grouping_var</code> specifies column(s) of <strong>df</strong> to group by (e.g., <strong>sex</strong>) prior to assignments. In quotes.</li>
+<li><code>groups</code> is a vector specifying treatment groups in quotes</li>
+<li><code>n_cages_per_group</code> specifies number of cages per group
+<ul>
+<li>half # of subjects per group e.g., 2 cages of PLX-CON females</li>
+<li>can be the same for all groups (e.g., <code>2</code>) or a vector of numbers for custom assignment (e.g., <code>c(2, 4, 3, 4)</code>)</li>
+</ul></li>
+</ul>
+<p>The function does the following:</p>
+<ul>
+<li>Uses <code>set.seed()</code> to define the initial state of the random number generator</li>
+<li>Creates <strong>assigned_df</strong> data frame from input <code>df</code> by:
+<ul>
+<li>Restricting <code>df</code> to unique values of <strong>cage_num</strong>, retaining <code>grouping_var</code> column(s)</li>
+<li>Creating <strong>cage_rand</strong> column with random number assignment</li>
+<li>Grouping by <code>grouping_var</code> column(s)</li>
+<li>Creating <strong>group</strong> column with random group assignment per cage, number indicated by <code>n_cages_per_group</code></li>
+<li>Joining newly created columns to original <code>df</code></li>
+<li>Arranging data frame by <strong>cage_rand</strong> order</li>
+<li>Creating <strong>subject</strong> column from row number, which now aligns with the new cage order so cage mates will have sequential numbers</li>
+<li>Arranging data frame by <code>grouping_var</code> column(s)</li>
+</ul></li>
 </ul>
 <p>The output is a data frame binding <code>group</code>, <code>cage_num</code>, <code>cage_rand</code>, and <code>subject</code> columns to <code>df</code>.</p>
-<p>It requires {dplyr} package.</p>
+<p><strong>Limitation:</strong> Post-function modification required if subject numbers do not start with #1</p>
+<p>e.g., if starting with subject #33: <code>assigned_subjects &lt;- assigned_subjects %&gt;% mutate(subject = subject + 32)</code></p>
+<p>It requires {dplyr} and {rlang} packages within {tidyverse}.</p>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>assign_subject_num <span class="ot">&lt;-</span> <span class="cf">function</span>(df, <span class="at">seed =</span> <span class="dv">1</span>, grouping_var, groups, n_cages_per_group) {</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>  </span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Replicability</span></span>
 <span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">set.seed</span>(seed)</span>
 <span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>  assigned_df <span class="ot">&lt;-</span> df <span class="sc">%&gt;%</span> </span>
-<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    <span class="fu">group_by</span>({{grouping_var}}) <span class="sc">%&gt;%</span> <span class="co"># column of df</span></span>
-<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    <span class="fu">distinct</span>(cage_num) <span class="sc">%&gt;%</span> </span>
-<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    <span class="fu">mutate</span>(<span class="at">group =</span> <span class="fu">sample</span>(<span class="fu">rep</span>(groups, <span class="at">times =</span> n_cages_per_group)), <span class="co"># number of group assignments per cage</span></span>
-<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>           <span class="at">cage_rand =</span> <span class="fu">sample</span>(cage_num, <span class="at">replace =</span> <span class="cn">FALSE</span>)) <span class="sc">%&gt;%</span> </span>
-<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    <span class="fu">left_join</span>(subjects) <span class="co"># joining by common columns including cage_num</span></span>
-<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>  assigned_df <span class="ot">&lt;-</span> assigned_df <span class="sc">%&gt;%</span> <span class="fu">arrange</span>(cage_rand)</span>
-<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>  assigned_df <span class="ot">&lt;-</span> <span class="fu">rowid_to_column</span>(assigned_df, <span class="at">var =</span> <span class="st">"subject"</span>)</span>
-<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>  <span class="fu">return</span>(assigned_df)</span>
-<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Convert character or unquoted vars to symbols for tidy evaluation</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>  grouping_var_sym <span class="ot">&lt;-</span> <span class="fu">syms</span>(grouping_var)</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>  assigned_df <span class="ot">&lt;-</span> df <span class="sc">%&gt;%</span> </span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    <span class="fu">distinct</span>(cage_num, <span class="sc">!!!</span>grouping_var_sym) <span class="sc">%&gt;%</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    <span class="fu">mutate</span>(<span class="at">cage_rand =</span> <span class="fu">sample</span>(cage_num, <span class="at">replace =</span> <span class="cn">FALSE</span>)) <span class="sc">%&gt;%</span> </span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    <span class="fu">group_by</span>(<span class="sc">!!!</span>grouping_var_sym) <span class="sc">%&gt;%</span></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    <span class="fu">mutate</span>(<span class="at">group =</span> <span class="fu">sample</span>(<span class="fu">rep</span>(groups, <span class="at">times =</span> n_cages_per_group))) <span class="sc">%&gt;%</span> </span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>    <span class="fu">left_join</span>(df) <span class="sc">%&gt;%</span> </span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>    <span class="fu">arrange</span>(cage_rand) <span class="sc">%&gt;%</span> </span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>    <span class="fu">rowid_to_column</span>(<span class="at">var =</span> <span class="st">"subject"</span>) <span class="sc">%&gt;%</span> </span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>    <span class="fu">arrange</span>(<span class="sc">!!!</span>grouping_var_sym)</span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>  <span class="fu">return</span>(assigned_df)</span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
+</section>
+<section id="mgd5" class="level2">
+<h2 class="anchored" data-anchor-id="mgd5">MGD5</h2>
 <p>Read in subject meta data file.</p>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb2"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>subjects <span class="ot">&lt;-</span> <span class="fu">read_csv</span>(<span class="st">"data/MGD5_unassigned_subjects.csv"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
-<pre><code>Rows: 32 Columns: 3
+<pre><code>Rows: 48 Columns: 3
 ── Column specification ────────────────────────────────────────────────────────
 Delimiter: ","
 chr (1): sex
@@ -181,34 +207,86 @@ dbl (2): temp_subject, cage_num
 </div>
 <p>Use <code>assign_subject_num()</code> function to pseudo-randomly assign treatment groups and subject numbers.</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>assigned_subjects <span class="ot">&lt;-</span> <span class="fu">assign_subject_num</span>(<span class="at">df =</span> subjects, <span class="at">seed =</span> <span class="dv">435</span>, <span class="at">grouping_var =</span> sex, </span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>                                        <span class="at">groups =</span> <span class="fu">c</span>(<span class="st">"PLX-EtOH"</span>, <span class="st">"PLX-CON"</span>, <span class="st">"VEH-EtOH"</span>, <span class="st">"VEH-CON"</span>),</span>
-<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>                                        <span class="at">n_cages_per_group =</span> <span class="dv">2</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>assigned_subjects <span class="ot">&lt;-</span> <span class="fu">assign_subject_num</span>(<span class="at">df =</span> subjects, <span class="at">seed =</span> <span class="dv">485</span>, </span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>                                        <span class="at">grouping_var =</span> <span class="st">"sex"</span>, </span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>                                        <span class="at">groups =</span> <span class="fu">c</span>(<span class="st">"PLX-EtOH"</span>, <span class="st">"PLX-CON"</span>, <span class="st">"VEH-EtOH"</span>, <span class="st">"VEH-CON"</span>),</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>                                        <span class="at">n_cages_per_group =</span> <span class="dv">3</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
-<pre><code>Joining with `by = join_by(sex, cage_num)`</code></pre>
+<pre><code>Joining with `by = join_by(cage_num, sex)`</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>assigned_subjects</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="co"># reorder data frame</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>assigned_subjects <span class="ot">&lt;-</span> assigned_subjects <span class="sc">%&gt;%</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(subject, group, sex, cage_num, temp_subject, cage_rand)</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>assigned_subjects</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code># A tibble: 32 × 6
+<pre><code># A tibble: 48 × 6
 # Groups:   sex [2]
-   subject sex   cage_num group    cage_rand temp_subject
-     &lt;int&gt; &lt;chr&gt;    &lt;dbl&gt; &lt;chr&gt;        &lt;dbl&gt;        &lt;dbl&gt;
- 1       1 M            5 VEH-CON          1            9
- 2       2 M            5 VEH-CON          1           10
- 3       3 M            2 VEH-EtOH         2            3
- 4       4 M            2 VEH-EtOH         2            4
- 5       5 M            6 VEH-EtOH         3           11
- 6       6 M            6 VEH-EtOH         3           12
- 7       7 M            4 PLX-CON          4            7
- 8       8 M            4 PLX-CON          4            8
- 9       9 M            1 PLX-EtOH         5            1
-10      10 M            1 PLX-EtOH         5            2
-# ℹ 22 more rows</code></pre>
+   subject group    sex   cage_num temp_subject cage_rand
+     &lt;int&gt; &lt;chr&gt;    &lt;chr&gt;    &lt;dbl&gt;        &lt;dbl&gt;     &lt;dbl&gt;
+ 1       1 VEH-EtOH F           24           47         1
+ 2       2 VEH-EtOH F           24           48         1
+ 3       5 VEH-CON  F           20           39         3
+ 4       6 VEH-CON  F           20           40         3
+ 5      15 VEH-EtOH F           21           41         8
+ 6      16 VEH-EtOH F           21           42         8
+ 7      17 PLX-EtOH F           17           33         9
+ 8      18 PLX-EtOH F           17           34         9
+ 9      23 PLX-EtOH F           19           37        12
+10      24 PLX-EtOH F           19           38        12
+# ℹ 38 more rows</code></pre>
 </div>
 </div>
 <p>Save <strong>assigned_subjects</strong> to files.</p>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb8"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="fu">write_csv</span>(assigned_subjects, <span class="st">"data/MGD5_subjects.csv"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+</section>
+<section id="mgd6" class="level2">
+<h2 class="anchored" data-anchor-id="mgd6">MGD6</h2>
+<p>Repeat workflow from MGD5.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb9"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>subjects <span class="ot">&lt;-</span> <span class="fu">read_csv</span>(<span class="st">"data/MGD6_unassigned_subjects.csv"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Rows: 32 Columns: 3
+── Column specification ────────────────────────────────────────────────────────
+Delimiter: ","
+chr (1): sex
+dbl (2): temp_subject, cage_num
+
+ℹ Use `spec()` to retrieve the full column specification for this data.
+ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb11"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>assigned_subjects <span class="ot">&lt;-</span> <span class="fu">assign_subject_num</span>(<span class="at">df =</span> subjects, <span class="at">seed =</span> <span class="dv">365</span>, </span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>                                        <span class="at">grouping_var =</span> <span class="st">"sex"</span>, </span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>                                        <span class="at">groups =</span> <span class="fu">c</span>(<span class="st">"PLX-EtOH"</span>, <span class="st">"PLX-CON"</span>, <span class="st">"VEH-EtOH"</span>, <span class="st">"VEH-CON"</span>),</span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>                                        <span class="at">n_cages_per_group =</span> <span class="dv">2</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Joining with `by = join_by(cage_num, sex)`</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb13"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="co"># reorder data frame</span></span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>assigned_subjects <span class="ot">&lt;-</span> assigned_subjects <span class="sc">%&gt;%</span></span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(subject, group, sex, cage_num, temp_subject, cage_rand)</span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a>assigned_subjects</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 32 × 6
+# Groups:   sex [2]
+   subject group    sex   cage_num temp_subject cage_rand
+     &lt;int&gt; &lt;chr&gt;    &lt;chr&gt;    &lt;dbl&gt;        &lt;dbl&gt;     &lt;dbl&gt;
+ 1       5 PLX-CON  F           38           75        27
+ 2       6 PLX-CON  F           38           76        27
+ 3       7 VEH-CON  F           36           71        28
+ 4       8 VEH-CON  F           36           72        28
+ 5      11 VEH-EtOH F           34           67        30
+ 6      12 VEH-EtOH F           34           68        30
+ 7      15 PLX-EtOH F           40           79        32
+ 8      16 PLX-EtOH F           40           80        32
+ 9      23 PLX-EtOH F           39           77        36
+10      24 PLX-EtOH F           39           78        36
+# ℹ 22 more rows</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb15"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="fu">write_csv</span>(assigned_subjects, <span class="st">"data/MGD6_subjects.csv"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 </section>
 </section>
