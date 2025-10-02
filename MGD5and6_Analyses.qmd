@@ -33,7 +33,8 @@ FJB (FluoroJade-B) is a marker of dying neurons.
 
 Adult female and male sprague-dawley rats were injected with PLX [50 mg/kg, 10 mL/kg, subcutaneous (s.c.), every 12 h] or vehicle for 11 days. During the last 4 days of PLX, rats received ethanol (0-5 g/kg, 25% EtOH w/v, intragastric (i.g.), every 8 h) in diluted Vanilla Ensure Plus (50% w/v) in a Majchrowicz paradigm. Tissue was collected during intoxication, 3-6 h post-EtOH (T0).
 Blood ethanol concentration (BEC; mg/dL) was determined from tail blood collected 90 min post-dose 7.
-Tissue was prepared by phosphate-buffered saline perfusion (PBS), brain extraction and bisection, and at least 24 h post-fix in 4% paraformaldehyde (PFA) at 4°C before storing in PBS at 4°C until slicing at 40 um thickness on vibrating microtome.
+Tissue was prepared by phosphate-buffered saline perfusion (PBS), brain extraction and bisection, at least 24 h post-fixation in 4% paraformaldehyde (PFA) at 4°C, and storage in PBS at 4°C until sliced 1:12 series at 40 um thickness on vibrating microtome. Tissue slices were stored in cryoprotectant at -20°C until immunohistochemical assay.
+
 
 
 # Preliminaries
@@ -56,9 +57,11 @@ library(ggpubr) # for data visualization
 results_path <- "data/results/"
 ```
 
+
 ## Function to add significance to {afex} ANOVA results
 
-`sig_sym()` is a function that adds a significance symbol column to an ANOVA table and saves the results as a tibble.
+`sig_sym()` is a function that adds a significance symbol column to an ANOVA 
+table and saves the results as a tibble.
 
 It has the following arguments: 
 
@@ -103,6 +106,31 @@ aov_sig_sym <- function(aov_res) {
 ```
 
 
+## Function to add significance to {afex} emmeans results
+
+`emm_sig_sym()` is a function that adds a significance symbol column to an 
+emmeans contrasts tibble and saves the results as a ".csv".
+
+It has the following arguments: 
+
+- `emm_res` is a tibble containing contrasts from `emmeans()` model object
+
+It uses the following external objects:
+
+- **results_path** indicates the destination path to save files. "data/results/"
+  - Could modify function to include this as an argument
+  
+The function does the following:
+
+- Creates **name_emm_res**, a string, from input `emm_res`, 
+a tibble containing contrasts from `emmeans()` model object.
+  - This will be used to name the output file
+- Format the emmeans results into a table
+  - Convert data frame to a tibble (redundant)
+  - Add new column **p<.05** with significance symbols for values of **p**
+  - Save results as ".csv". 
+    - Path indicated by **results_path** external object and **name_emm_res**
+
 ```{r}
 emm_sig_sym <- function(emm_res) {
   
@@ -121,9 +149,39 @@ emm_sig_sym <- function(emm_res) {
 }
 ```
 
+
+## Function for custom theme for {ggplot2}
+
+```{r Graph theme}
+theme_prism <- function() {
+  theme_minimal(base_size = 16) +  # Use a minimal base theme
+    theme(
+      panel.grid.major = element_blank(),  # No major grid lines
+      panel.grid.minor = element_blank(),  # No minor grid lines
+      panel.background = element_rect(fill = "white", color = NA),  # White background
+      plot.background = element_rect(fill = "white", color = NA),  # White plot background
+      axis.text = element_text(color = "black"),  # Black axis text
+      axis.title = element_text(color = "black"),  # Black axis titles
+      axis.ticks = element_line(color = "black"),  # Black ticks
+      axis.line.x = element_line(color = "black"),  # Bottom axis line
+      axis.line.y = element_line(color = "black"),  # Left axis line
+      legend.position = "right",  # Legend position in x
+      legend.justification = "top", # Legend position in y
+      legend.background = element_blank(),  # Transparent legend background
+      legend.key = element_blank(),  # Remove outline around legend key
+      legend.title = element_blank(), # Remove legend key title
+      plot.title = element_text(hjust = 0.5, size = 16),  # Centered title
+      plot.subtitle = element_text(hjust = 0.5, size = 12)  # Centered subtitle
+    )
+}
+```
+
+
+
 # Binge statistics
 
-**2025-09-15**
+**2025-10-01**
+Run on MGD5
 Currently excluding rats that died during binge: 17, 36, 31, 28
 May later exclude #35 (hind limb/paw edema) <- would need to update exclude column in all data files
 
@@ -317,4 +375,334 @@ emm_sig_sym(intox_aov3_post)
 
 # Sig "main effect" diffs: score_04 F PLX - M PLX, score_10 F PLX - M PLX, score_10 F PLX - F VEH, score_11 F PLX - F VEH
 # also some interaction diffs: M PLX - F VEH, F PLX - M VEH
+```
+
+```{r Load and process daily dose}
+# Load dose data, retaining excluded subjects
+dose <- read_csv("data/dose.csv") # %>% filter(exclude == "N")
+
+# Check data
+slice_sample(dose, n = 6)
+
+# Calculate average dose per day per subject in daily_dose table
+daily_dose <- dose %>% 
+  mutate(day_01 = rowSums(select(., dose_01:dose_03)),
+         day_02 = rowSums(select(., dose_04:dose_06)),
+         day_03 = rowSums(select(., dose_07:dose_09)),
+         day_04 = rowSums(select(., dose_10:dose_12))) %>% 
+  select(!dose_01:dose_12)
+
+write_csv(daily_dose, "data/daily_dose.csv")
+
+###############################################################################
+
+# Load daily dose data
+daily_dose <- read_csv("data/daily_dose.csv") %>% filter(exclude == "N")
+
+# Check data
+slice_sample(daily_dose, n = 6)
+
+# Calculate average daily dose per subject
+daily_dose <- daily_dose %>%
+  mutate(mean = rowMeans(select(., day_01:day_04)))
+
+
+# Get summary statistics
+daily_dose_summary <- daily_dose %>%
+  group_by(drug, sex) %>%
+  get_summary_stats(mean, type = "mean_se") %>% 
+  as_tibble() %>% 
+  write_csv(., str_c(results_path, "/daily_dose_summary.csv"))
+daily_dose_summary
+
+
+# Compute two-way ANOVA on average daily dose using {afex} package
+daily_dose_aov2 <- aov_ez(id = 'subject', 
+                     dv = 'mean', 
+                     data = daily_dose, 
+                     between = c('sex', 'drug')
+                     )
+daily_dose_aov2
+# Main effect of sex, drug
+# No interaction
+
+# Use custom function `sig_sym()` to add significance label and save result as tibble
+aov_sig_sym(daily_dose_aov2)
+
+
+# Reformat data for three-way ANOVA across days (time)
+daily_dose_long <- daily_dose %>% select(!mean) %>% 
+  pivot_longer(cols = day_01:day_04, 
+               names_to = "day",
+               values_to = "daily_dose")
+
+# Compute three-way ANOVA on daily dose across days using {afex} package
+daily_dose_aov3 <- aov_ez(id = 'subject', 
+                     dv = 'daily_dose', 
+                     data = daily_dose_long, 
+                     between = c('sex', 'drug'),
+                     within = 'day'
+                     )
+daily_dose_aov3
+# Main effect of sex, drug, day
+# sex x day, drug x day, sex x drug x day interaction
+
+# Use custom function `aov_sig_sym()` to add significance label and save result as tibble
+aov_sig_sym(daily_dose_aov3)
+
+
+# Post-hoc comparisons, could restrict to common factors (no interaction) with $contrasts[c()]
+# within day: [1] F PLX - M PLX [2] F PLX - F VEH [3] F PLX - M VEH [4] M PLX - F VEH [5] M PLX - M VEH [6] F PLX - M PLX
+# 24 comparisons total
+daily_dose_aov3_post <- emmeans(daily_dose_aov3, 
+                           pairwise ~ sex * drug | day,
+                           adjust = "bonferroni")$contrasts %>% 
+  as_tibble()
+
+# Use custom function `emm_sig_sym()` to add significance label and save result as tibble
+emm_sig_sym(daily_dose_aov3_post)
+
+# main effect diffs: day_02 F PLX - M PLX, day_04 F PLX - F VEH
+# interaction diffs: day_02/03/04 M PLX - F VEH
+```
+
+```{r Load and process blood ethanol concentration}
+# Load blood ethanol concentration (bec) data
+bec <- read_csv("data/bec.csv") %>% filter(exclude == "N")
+
+# Check data
+slice_sample(bec, n = 6)
+
+# Get summary statistics
+bec_summary <- bec %>%
+  group_by(drug, sex) %>%
+  get_summary_stats(mean, type = "mean_se") %>% 
+  as_tibble() %>% 
+  write_csv(., str_c(results_path, "/bec_summary.csv"))
+bec_summary
+
+
+# Compute two-way ANOVA on bec using {afex} package
+bec_aov2 <- aov_ez(id = 'subject', 
+                     dv = 'mean', 
+                     data = bec, 
+                     between = c('sex', 'drug')
+                     )
+bec_aov2
+# No sig (sex p = 0.096)
+
+# Use custom function `sig_sym()` to add significance label and save result as tibble
+aov_sig_sym(bec_aov2)
+```
+
+```{r Correlate bec and dose 7, bec and mean intox, bec and mean daily dose}
+# bind bec and dose data frames (bec$mean renamed to bec_mean)
+binge <- full_join(bec %>% select(subject, diet, drug, sex, mean) %>% rename(bec_mean = mean), 
+                      dose %>% filter(exclude == "N") %>% 
+                        select(subject, diet, drug, sex, dose_01:dose_12))
+
+# bind daily_dose, including daily_dose$mean (renamed to daily_dose_mean) to binge data frame
+binge <- full_join(binge, daily_dose %>% select(subject, diet, drug, sex, mean) %>% rename(daily_dose_mean = mean))
+
+# bind intox, including intox$mean (renamed to intox_mean) to binge data frame
+binge <- full_join(binge, intox %>% select(subject, diet, drug, sex, mean) %>% rename(intox_mean = mean))
+
+# rename F to female and M to male (better for graph legend)
+binge <- binge %>% mutate(sex = case_when(sex == 'M' ~ 'male',
+                                 sex == 'F' ~ 'female',
+                                 TRUE ~ sex))
+
+# move mean columns to after bec_mean and create drug_sex column 
+binge <- binge %>% relocate(daily_dose_mean:intox_mean, .after = bec_mean) %>% 
+  mutate(drug_sex = paste(drug, sex, sep = " "), .before = bec_mean)
+
+# check order of drug_sex factor levels
+binge$drug_sex <- as.factor(binge$drug_sex) 
+
+
+# Calculate correlation between ethanol dose 7 and BEC
+cor_bec_dose <- binge %>% group_by(drug, sex) %>% cor_test(dose_07, bec_mean)
+
+
+# Calculate correlation between mean intoxication and BEC
+cor_bec_intox <- binge %>% group_by(drug, sex) %>% cor_test(intox_mean, bec_mean)
+
+# Calculate correlation between mean daily dose and BEC
+cor_bec_dd <- binge %>% group_by(drug, sex) %>% cor_test(daily_dose_mean, bec_mean)
+
+
+# Create custom aesthetics
+custom_colors <- c("PLX female"="#FF9933", "PLX male"="#BF5700", "VEH female"="#0000FF", "VEH male"="#000080")
+custom_fills <- c("PLX female"="#FF9933", "PLX male"="#FFFFFF", "VEH female"="#0000FF", "VEH male"="#FFFFFF")
+custom_shapes <- c("PLX female"=22, "PLX male"=22, "VEH female"=21, "VEH male"=21)
+custom_linetypes <- c("PLX female"="solid", "PLX male"="dashed", "VEH female"="solid", "VEH male"="dashed")
+
+# PLX female: shape=22, fill="#BF5700", color="#BF5700", orange filled square w/ orange border and solid line
+# PLX male: shape=22, fill="#FFFFFF", color="#BF5700", white filled square w/ orange border and dashed line
+# VEH female: shape=21, fill="#0000FF", color="#0000FF", blue filled circle with blue border and solid line
+# VEH male: shape=21, fill="#FFFFFF", color="#0000FF", white filled circle w/ blue border and dashed line
+
+# dose 7 vs BEC
+plot1 <- ggplot(data = binge, 
+                aes(x = dose_07, 
+                    y = bec_mean)) + 
+  geom_point(aes(shape = drug_sex, 
+                 fill = drug_sex, 
+                 color = drug_sex), 
+             size = 3) + # scatterplot
+  scale_shape_manual(values = custom_shapes) +
+  scale_fill_manual(values = custom_fills) +
+  scale_color_manual(values = custom_colors) +
+  scale_linetype_manual(values = custom_linetypes) +
+  geom_smooth(method = lm, formula = y ~ x, se = FALSE, 
+              aes(color = drug_sex, linetype = drug_sex)) + # add line of fit
+  scale_x_continuous(limits = c(0, 5), expand = c(0, 0.01)) + # set x axis bounds
+  scale_y_continuous(limits = c(0, 500), expand = c(0, 1)) + # set y axis bounds
+  theme_prism() + # use preset theme for prism-like graph
+  ylab("BEC (mg/dl) \n90 min post-ethanol dose") +
+  xlab("Ethanol dose (g/kg)") +
+  labs(title = "Correlation of 7th ethanol dose and BEC") + 
+  stat_cor(method = "pearson", aes(color = drug_sex, group = drug_sex), label.x.npc = 0.05, label.y.npc = 0.25, 
+           show.legend = FALSE) # add correlation coefficients to graph
+plot1
+
+# save plot
+ggsave("corr_BECvDose7.tiff", path = "data/graphs/", width = 6.5, height = 4.5, units = "in")
+
+
+# mean intox vs BEC
+plot2 <- ggplot(data = binge, 
+                aes(x = intox_mean, 
+                    y = bec_mean)) + 
+  geom_point(aes(shape = drug_sex, 
+                 fill = drug_sex, 
+                 color = drug_sex), 
+             size = 3) + # scatterplot
+  scale_shape_manual(values = custom_shapes) +
+  scale_fill_manual(values = custom_fills) +
+  scale_color_manual(values = custom_colors) +
+  scale_linetype_manual(values = custom_linetypes) +
+  geom_smooth(method = lm, formula = y ~ x, se = FALSE, 
+              aes(color = drug_sex, linetype = drug_sex)) + # add line of fit
+  scale_x_continuous(limits = c(0, 5), expand = c(0, 0.01)) + # set x axis bounds
+  scale_y_continuous(limits = c(0, 500), expand = c(0, 1)) + # set y axis bounds
+  theme_prism() + # use preset theme for prism-like graph
+  ylab("BEC (mg/dl)") +
+  xlab("Mean intoxication score") +
+  labs(title = "Correlation of mean intoxication and BEC") + 
+  stat_cor(method = "pearson", aes(color = drug_sex, group = drug_sex), label.x.npc = 0.05, label.y.npc = 0.25, 
+           show.legend = FALSE) # add correlation coefficients to graph
+plot2
+
+ggsave("corr_BECvIntox.tiff", path = "data/graphs/", width = 6.5, height = 4.5, units = "in")
+
+
+# mean daily dose vs BEC
+plot3 <- ggplot(data = binge, 
+                aes(x = daily_dose_mean, 
+                    y = bec_mean)) + 
+  geom_point(aes(shape = drug_sex, 
+                 fill = drug_sex, 
+                 color = drug_sex), 
+             size = 3) + # scatterplot
+  scale_shape_manual(values = custom_shapes) +
+  scale_fill_manual(values = custom_fills) +
+  scale_color_manual(values = custom_colors) +
+  scale_linetype_manual(values = custom_linetypes) +
+  geom_smooth(method = lm, formula = y ~ x, se = FALSE, 
+              aes(color = drug_sex, linetype = drug_sex)) + # add line of fit
+  scale_x_continuous(limits = c(0, 15), expand = c(0, 0.01)) + # set x axis bounds
+  scale_y_continuous(limits = c(0, 500), expand = c(0, 1)) + # set y axis bounds
+  theme_prism() + # use preset theme for prism-like graph
+  ylab("BEC (mg/dl)") +
+  xlab("Mean daily ethanol dose (g/kg/day)") +
+  labs(title = "Correlation of mean daily ethanol dose and BEC") + 
+  stat_cor(method = "pearson", aes(color = drug_sex, group = drug_sex), label.x.npc = 0.05, label.y.npc = 0.25, 
+           show.legend = FALSE) # add correlation coefficients to graph
+plot3
+
+ggsave("corr_BECvDailyDose.tiff", path = "data/graphs/", width = 6.5, height = 4.5, units = "in")
+```
+
+
+############# BONUS ANALYSIS ###################################################
+
+## Mixed effect model of BEC and dose
+**2025-10-01**
+
+**Need to work on model fit**
+
+```{r mixed effect model of BEC and dose}
+binge_long <- binge %>% select(subject:bec_mean, dose_01:dose_07) %>% pivot_longer(cols = dose_01:dose_07, names_to = "time", values_to = "dose")
+
+# convert to factors, relevel drug factor
+binge_long <- binge_long %>% 
+  mutate(dose = factor(dose), drug = factor(drug), sex = factor(sex)) %>% 
+  mutate(drug = fct_relevel(drug, c("VEH", "PLX")))
+
+# Fit the mixed-effects model
+model <- lme4::lmer(bec_mean ~ dose * drug * sex + (1|subject), data = binge_long)
+# not a good fit
+# fit warnings:
+# fixed-effect model matrix is rank deficient so dropping 1 column / coefficient
+# optimizer (nloptwrap) convergence code: 0 (OK)
+# Model failed to converge with max|grad| = 1.29232 (tol = 0.002, component 1)
+# Model is nearly unidentifiable: very large eigenvalue
+
+# Summary of the model
+summary(model)
+```
+
+################################################################################
+
+
+
+# Archive
+
+## Correlation plots of binge metrics
+
+Code to convert drug_sex legend labels from "PLX_F" format -> "PLX female" format
+to improve correlation scatterplot legend readability within plot creation
+
+Alternative method = change format of drug_sex column values within data table
+
+```{r}
+# Create custom aesthetics
+custom_colors <- c("PLX female"="#FF9933", "PLX male"="#BF5700", "VEH female"="#0000FF", "VEH male"="#000080")
+custom_fills <- c("PLX female"="#FF9933", "PLX male"="#FFFFFF", "VEH female"="#0000FF", "VEH male"="#FFFFFF")
+custom_shapes <- c("PLX female"=22, "PLX male"=22, "VEH female"=21, "VEH male"=21)
+custom_linetypes <- c("PLX female"="solid", "PLX male"="dashed", "VEH female"="solid", "VEH male"="dashed")
+
+# PLX female: shape=22, fill="#BF5700", color="#BF5700", orange filled square w/ orange border and solid line
+# PLX male: shape=22, fill="#FFFFFF", color="#BF5700", white filled square w/ orange border and dashed line
+# VEH female: shape=21, fill="#0000FF", color="#0000FF", blue filled circle with blue border and solid line
+# VEH male: shape=21, fill="#FFFFFF", color="#0000FF", white filled circle w/ blue border and dashed line
+
+# dose 7 vs BEC
+plot1 <- ggplot(data = binge, 
+                aes(x = dose_07, 
+                    y = bec_mean)) + 
+  geom_point(aes(shape = drug_sex, 
+                 fill = drug_sex, 
+                 color = drug_sex), 
+             size = 3) + # scatterplot
+  scale_shape_manual(values = custom_shapes,
+                     labels = c("PLX female", "PLX male", "VEH female", "VEH male")) +
+  scale_fill_manual(values = custom_fills,
+                    labels = c("PLX female", "PLX male", "VEH female", "VEH male")) +
+  scale_color_manual(values = custom_colors,
+                     labels = c("PLX female", "PLX male", "VEH female", "VEH male")) +
+  scale_linetype_manual(values = custom_linetypes,
+                        labels = c("PLX female", "PLX male", "VEH female", "VEH male")) +
+  geom_smooth(method = lm, formula = y ~ x, se = FALSE, 
+              aes(color = drug_sex, linetype = drug_sex)) + # add line of fit
+  scale_x_continuous(limits = c(0, 5), expand = c(0, 0.01)) + # set x axis bounds
+  scale_y_continuous(limits = c(0, 500), expand = c(0, 1)) + # set y axis bounds
+  theme_prism() + # use preset theme for prism-like graph
+  ylab("BEC (mg/dl) \n90 min post-ethanol dose") +
+  xlab("Ethanol dose (g/kg)") +
+  labs(title = "Correlation of 7th ethanol dose and BEC") + 
+  stat_cor(method = "pearson", aes(color = drug_sex, group = drug_sex), label.x.npc = 0.05, label.y.npc = 0.25, 
+           show.legend = FALSE) # add correlation coefficients to graph
+plot1
 ```
