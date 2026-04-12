@@ -200,6 +200,52 @@ assigned_subjects <- assigned_subjects %>%
   mutate(subject = subject + 48)
 
 assigned_subjects
+```
 
+Renumbered certain *temp_subject* to distribute weights among treatment groups, along with associated *cage_num* and *cage_rand*
+
+old_temp	new_temp
+11	01
+12	02
+01	11
+02	12
+
+```{r}
+assigned_subjects <- assigned_subjects %>% 
+  ungroup %>% 
+  # First swap the temp_subject identifiers
+  mutate(
+    temp_subject = case_when(
+      temp_subject == 1  ~ 11,
+      temp_subject == 11 ~ 1,
+      temp_subject == 2  ~ 12,
+      temp_subject == 12 ~ 2,
+      TRUE ~ temp_subject
+    )
+  ) %>%
+  # Then swap corresponding cage info
+  mutate(
+    cage_num = case_when(
+      temp_subject == 1  ~ cage_num[temp_subject == 11],
+      temp_subject == 11 ~ cage_num[temp_subject == 1],
+      temp_subject == 2  ~ cage_num[temp_subject == 12],
+      temp_subject == 12 ~ cage_num[temp_subject == 2],
+      TRUE ~ cage_num
+      )
+    ) %>% 
+  mutate(
+    cage_rand = case_when(
+      temp_subject == 1  ~ cage_rand[temp_subject == 11],
+      temp_subject == 11 ~ cage_rand[temp_subject == 1],
+      temp_subject == 2  ~ cage_rand[temp_subject == 12],
+      temp_subject == 12 ~ cage_rand[temp_subject == 2],
+      TRUE ~ cage_rand
+      )
+    )
+```
+
+Save **assigned_subjects** to files.
+```{r save data file}
 write_csv(assigned_subjects, "data/MGD6_subjects.csv")
 ```
+

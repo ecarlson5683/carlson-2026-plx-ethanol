@@ -1,5 +1,5 @@
 ---
-title: "MGD5and6_Analyses"
+title: "MGD56_Analyses"
 author: "Erika Carlson"
 format: html
 editor_options: 
@@ -54,6 +54,7 @@ library(ggplot2) # for data visualization
 library(ggpubr) # for data visualization
 
 # Indicate path to save results
+data_path <- "data/"
 results_path <- "data/results/"
 ```
 
@@ -65,34 +66,33 @@ table and saves the results as a tibble.
 
 It has the following arguments: 
 
-- `aov_res` is a model object of class list containing results of `aov_ez()`
-
-It uses the following external objects:
-
-- **results_path** indicates the destination path to save files. "data/results/"
-  - Could modify function to include this as an argument
+- **aov_res** is a model object of class list containing results of `aov_ez()`
+- **path** indicates the destination path to save files. 
+  - It can be a named vector of class character or a quoted path e.g., "data/results/"
   
 The function does the following:
 
-- Creates **name_aov_res**, a string, from input `aov_res`, a model object list.
+- Creates **name_aov_res**, a string, from input **aov_res**, a model object list.
   - This will be used to name the output file
 - Format the ANOVA results into a table
-  - Compute ANOVA tables for the input model object `aov_res`
+  - Compute ANOVA tables for the input model object **aov_res**
   - Convert row names containing the model factors to a column with name Factor
   - Convert data frame to a tibble
   - Rename **Pr(>F)** column containing p-values to **p**
   - Add new column **p<.05** with significance symbols for values of **p**
   - Save results as ".csv". 
-    - Path indicated by **results_path** external object and **name_aov_res**
+    - Path indicated by **path** and **name_aov_res**
+    
+Dependencies: {tidyverse}
 
 ```{r}
-aov_sig_sym <- function(aov_res) {
+aov_sig_sym <- function(aov_res, path) {
   
   # Create object of aov_res in quotes to name file
   name_aov_res <- deparse(substitute(aov_res))
   
   # Format ANOVA table, add significance symbol column, save
-  anova(aov_res) %>%
+  res <- anova(aov_res) %>%
   rownames_to_column(var = "Factor") %>%
   as_tibble() %>% 
   rename(p = "Pr(>F)") %>% 
@@ -101,7 +101,9 @@ aov_sig_sym <- function(aov_res) {
                              p < 0.01 ~ "**",
                              p < 0.05 ~ "*",
                              p >= 0.05 ~ "ns")) %>% 
-  write_csv(., str_c(results_path, name_aov_res, ".csv"))
+  write_csv(., str_c(path, name_aov_res, ".csv"))
+  
+  return(res)
 }
 ```
 
@@ -113,40 +115,117 @@ emmeans contrasts tibble and saves the results as a ".csv".
 
 It has the following arguments: 
 
-- `emm_res` is a tibble containing contrasts from `emmeans()` model object
-
-It uses the following external objects:
-
-- **results_path** indicates the destination path to save files. "data/results/"
-  - Could modify function to include this as an argument
+- **emm_res** is a tibble containing contrasts from `emmeans()` model object
+- **path** indicates the destination path to save files. 
+  - It can be a named vector of class character or a quoted path e.g., "data/results/"
   
 The function does the following:
 
-- Creates **name_emm_res**, a string, from input `emm_res`, 
+- Creates **name_emm_res**, a string, from input **emm_res**, 
 a tibble containing contrasts from `emmeans()` model object.
   - This will be used to name the output file
 - Format the emmeans results into a table
   - Convert data frame to a tibble (redundant)
   - Add new column **p<.05** with significance symbols for values of **p**
   - Save results as ".csv". 
-    - Path indicated by **results_path** external object and **name_emm_res**
+    - Path indicated by **path** and **name_emm_res**
+    
+Dependencies: {tidyverse}
 
 ```{r}
-emm_sig_sym <- function(emm_res) {
+emm_sig_sym <- function(emm_res, path) {
   
   # Create object of emm_res in quotes to name file
   name_emm_res <- deparse(substitute(emm_res))
   
   # Format emmeans table, add significance symbol column, save
-  emm_res %>%
+  res <- emm_res %>%
   as_tibble() %>%
-  mutate("p<.05" = case_when(p.value < 0.0001 ~ "****",
-                             p.value < 0.001 ~ "***",
-                             p.value < 0.01 ~ "**",
-                             p.value < 0.05 ~ "*",
-                             p.value >= 0.05 ~ "ns")) %>% 
-  write_csv(., str_c(results_path, name_emm_res, ".csv"))
+  mutate("p<.05" = case_when(p.adj < 0.0001 ~ "****",
+                             p.adj < 0.001 ~ "***",
+                             p.adj < 0.01 ~ "**",
+                             p.adj < 0.05 ~ "*",
+                             p.adj >= 0.05 ~ "ns")) %>% 
+  write_csv(., str_c(path, name_emm_res, ".csv"))
+  
+  return(res)
 }
+```
+
+## Function to extract ANOVA results sentence from {afex} anova model object
+
+`add_anova_summary()` is a function to extract anova sentence and append to *anova_summary_df*
+
+It has the following arguments: 
+
+- **aov_res** is a model object of class list containing results of `aov_ez()`
+- **data_name** is the quoted name of the data set to analyze (e.g., "measure_region")
+
+Dependencies: {dplyr}, {glue}, {afex}
+
+```{r}
+# Dependencies
+# library(dplyr)
+# library(glue)
+# library(afex)
+
+# Function to extract sentence and append to **anova_summary_df**
+add_anova_summary <- function(aov_res, data_name) {
+  
+  # Extract and format ANOVA sentence
+  anova_tbl <- anova(aov_res) %>%
+    rownames_to_column(var = "Factor") %>%
+    as_tibble()
+
+  anova_sentence <- anova_tbl %>%
+    mutate(
+      F_val = sprintf("%.2f", `F`),
+      ges_val = sprintf("%.3f", `ges`),
+      p_val = sprintf("%.4f", `Pr(>F)`),
+      num.Df = sprintf("%.0f", `num Df`),
+      den.Df = sprintf("%.0f", `den Df`)
+      ) %>%
+    transmute(
+      text = glue("{Factor} (F{num.Df},{den.Df} = {F_val}, \u03B72G = {ges_val}, p = {p_val})")
+      ) %>%
+    pull(text) %>%
+    paste(collapse = ", ") %>%
+    paste0("ANOVA yielded a main effect of ", .)
+
+  # Capture name of anova object
+  aov_name <- deparse(substitute(aov_res))
+  
+   # Create new row
+  new_row <- tibble(
+    data_frame = data_name,
+    anova_object = aov_name,
+    anova_sentence = anova_sentence
+  )
+
+  # Create or append to summary df
+  if (!exists("anova_summary_df", envir = .GlobalEnv)) {
+    assign("anova_summary_df", new_row, envir = .GlobalEnv)
+  } else {
+    anova_summary_df <<- bind_rows(anova_summary_df, new_row)
+  }
+
+  # Return current state
+  return(anova_summary_df)
+}
+```
+
+```{r}
+#| eval: false
+
+# Example usage
+aov3 <- aov_ez(id = 'subject', 
+               dv = "hippo", 
+               data = df, 
+               between = c('diet', 'drug', 'sex'))
+
+
+anova_summary_df <- add_anova_summary(aov_res = aov3,
+                                      data_name = "fjb_hippo")
 ```
 
 
@@ -177,13 +256,112 @@ theme_prism <- function() {
 ```
 
 
+# Binge statistics reformatting 
+
+Combining MGD5 and MGD6 data
+
+```{r}
+# Load dose data, retaining excluded subjects
+dose <- read_csv("data/dose.csv") # %>% filter(exclude == "N")
+
+# Check data
+slice_sample(dose, n = 6)
+
+# Calculate average dose per day per subject in daily_dose table
+daily_dose <- dose %>% 
+  mutate(day_01 = rowSums(select(., dose_01:dose_03)),
+         day_02 = rowSums(select(., dose_04:dose_06)),
+         day_03 = rowSums(select(., dose_07:dose_09)),
+         day_04 = rowSums(select(., dose_10:dose_12))) %>% 
+  select(!dose_01:dose_12)
+
+write_csv(daily_dose, "data/daily_dose.csv")
+```
+
+## Custom function
+
+`rearrange_data` function to reorder data by factor columns
+
+```{r}
+# Function to rearrange data and resave file
+# Rearrange as sex: F, M - drug: VEH, PLX - diet: CON, EtOH
+
+rearrange_data <- function(path, data, cols,
+                           desc_cols = NULL) {
+  
+  # Load data
+  df <- read_csv(str_c(path, data, ".csv"))
+  
+  # Build list of order expressions, applying desc() where specified
+  order_exprs <- lapply(cols, function(col) {
+    if (col %in% desc_cols) desc(df[[col]]) else df[[col]]
+  })
+  
+  # Rearrange by columns in order_exprs, unlisted with splice operator
+  df <- df %>% arrange(!!!order_exprs)
+  
+  # Save ".csv"
+  write_csv(df, str_c(path, data, ".csv"))
+  
+  # Check
+  head(df)
+}
+```
+
+```{r}
+# Non-function way
+data <- read_csv("data/percent_baseline_weight.csv")
+# rearrange as sex: F, M - drug: VEH, PLX - diet: CON, EtOH
+data <- data %>% arrange(sex, desc(drug), diet)
+# save .csv
+write_csv(data, "data/percent_baseline_weight.csv")
+```
+
+```{r}
+# Weight
+rearrange_data(data_path, data = "weight", 
+               cols = c("sex", "drug", "diet"), 
+               desc_cols = c("drug"))
+
+# Weight, percent baseline
+rearrange_data(data_path, data = "percent_baseline_weight", 
+               cols = c("sex", "drug", "diet"), 
+               desc_cols = c("drug"))
+
+# Intoxication
+rearrange_data(data_path, data = "intoxication", 
+               cols = c("drug", "sex"), 
+               desc_cols = c("drug"))
+
+# Dose
+rearrange_data(data_path, data = "dose", 
+               cols = c("drug", "sex"), 
+               desc_cols = c("drug"))
+
+# Daily dose
+rearrange_data(data_path, data = "daily_dose", 
+               cols = c("drug", "sex"), 
+               desc_cols = c("drug"))
+
+# BEC
+rearrange_data(data_path, data = "bec", 
+               cols = c("drug", "sex"), 
+               desc_cols = c("drug"))
+```
+
 
 # Binge statistics
 
-**2025-10-01**
-Run on MGD5
-Currently excluding rats that died during binge: 17, 36, 31, 28
+**2026-04-09**
+Run on MGD5 and MGD6
+
+Excluding rats that died during binge: 17, 36, 31, 28, 52, 67, 78
+
 May later exclude #35 (hind limb/paw edema) <- would need to update exclude column in all data files
+
+```{r}
+results_path <- "data/results/"
+```
 
 ```{r Load and process body weights}
 # Load weight data
@@ -208,61 +386,95 @@ weight_onset <- weight %>%
 
 
 # Compute two-way ANOVA on average onset weight in males using {afex} package
-weight_onset_aov2_m <- aov_ez(id = 'subject', 
+weight_onset_m_aov2 <- aov_ez(id = 'subject', 
                               dv = 'day_01', 
                               data = weight %>% filter(sex == 'M'), 
                               between = c('diet', 'drug')
                               )
-weight_onset_aov2_m
 
 # Add significance symbol and save result as tibble using custom `sig_sym()` function
-aov_sig_sym(weight_onset_aov2_m)
+aov_sig_sym(weight_onset_m_aov2, results_path)
 # no significance
+
+# Create ANOVA sentence using custom `add_anova_summary()` function
+add_anova_summary(weight_onset_m_aov2, "weight_onset_m")
+
 
 
 # Repeat in females
-weight_onset_aov2_f <- aov_ez(id = 'subject', 
+weight_onset_f_aov2 <- aov_ez(id = 'subject', 
                               dv = 'day_01', 
                               data = weight %>% filter(sex == 'F'), 
                               between = c('diet', 'drug')
                               )
-weight_onset_aov2_f
 
-aov_sig_sym(weight_onset_aov2_f)
+aov_sig_sym(weight_onset_f_aov2, results_path)
 # no significance
+
+add_anova_summary(weight_onset_f_aov2, "weight_onset_f")
+
 
 
 # Create weight_long table for analysis across days
 weight_long <- weight %>% pivot_longer(cols = day_01:day_11, names_to = "day", values_to = "weight")
 
-
 # Compute three-way ANOVA on average weight over time in males using {afex} package
-weight_aov3_m <- aov_ez(id = 'subject', 
+weight_m_aov3 <- aov_ez(id = 'subject', 
                         dv = 'weight', 
                         data = weight_long %>% filter(sex == 'M'), 
                         between = c('diet', 'drug'),
                         within = 'day'
                               )
-weight_aov3_m
 
-# Use custom function `sig_sym() to add significance symbol and save result as tibble
-aov_sig_sym(weight_aov3_m)
+aov_sig_sym(weight_m_aov3, results_path)
 # main effect of drug, day
-# interaction of drug x day, diet x day, drug x diet x day
+# interaction of diet x day, drug x day, diet x drug x day
+
+add_anova_summary(weight_m_aov3, "weight_m")
+
+# Post-hoc comparisons, restrict to common factors (no interaction)
+weight_m_aov3_post <- emmeans(weight_m_aov3, 
+                           pairwise ~ diet * drug | day,
+                           adjust = "none")$contrasts %>% 
+  as_tibble() %>% 
+  filter(contrast %in% c("CON PLX - EtOH PLX",
+                         "CON PLX - CON VEH", 
+                         "EtOH PLX - EtOH VEH",
+                         "CON VEH - EtOH VEH")) %>% 
+  mutate(p.adj = p.adjust(p.value, method = "bonferroni")) # corrected for 44 comparisons
+
+# Use custom function `emm_sig_sym()` to add significance label and save result as tibble
+emm_sig_sym(weight_m_aov3_post, results_path)
 
 
 # Repeat in females
-weight_aov3_f <- aov_ez(id = 'subject', 
+weight_f_aov3 <- aov_ez(id = 'subject', 
                         dv = 'weight', 
                         data = weight_long %>% filter(sex == 'F'), 
                         between = c('diet', 'drug'),
                         within = 'day'
                               )
-weight_aov3_f
 
-aov_sig_sym(weight_aov3_f)
+aov_sig_sym(weight_f_aov3, results_path)
 # main effect of day
 # interaction of drug x day, diet x day
+
+add_anova_summary(weight_f_aov3, "weight_f")
+
+
+# Post-hoc comparisons, restrict to common factors (no interaction)
+weight_f_aov3_post <- emmeans(weight_f_aov3, 
+                           pairwise ~ diet * drug | day,
+                           adjust = "none")$contrasts %>% 
+  as_tibble() %>% 
+  filter(contrast %in% c("CON PLX - EtOH PLX",
+                         "CON PLX - CON VEH", 
+                         "EtOH PLX - EtOH VEH",
+                         "CON VEH - EtOH VEH")) %>% 
+  mutate(p.adj = p.adjust(p.value, method = "bonferroni")) # corrected for 44 comparisons
+
+# Use custom function `emm_sig_sym()` to add significance label and save result as tibble
+emm_sig_sym(weight_f_aov3_post, results_path)
 
 
 ###############################################################################
@@ -279,31 +491,35 @@ percent_weight_long <- percent_weight %>% pivot_longer(cols = day_01:day_11, nam
 
 
 # Compute three-way ANOVA on average weight over time in males using {afex} package
-percent_weight_aov3_m <- aov_ez(id = 'subject', 
+percent_weight_m_aov3 <- aov_ez(id = 'subject', 
                         dv = 'weight', 
                         data = percent_weight_long %>% filter(sex == 'M'), 
                         between = c('diet', 'drug'),
                         within = 'day'
                               )
-percent_weight_aov3_m
 
 # Use custom function `sig_sym()` to add significance symbol and save result as tibble
-aov_sig_sym(percent_weight_aov3_m)
-# main effect of drug, day
-# interaction of drug x day, diet x day, drug x diet x day
+aov_sig_sym(percent_weight_m_aov3, results_path)
+# main effect of drug, day (diet p = 0.051)
+# interaction of diet x day, drug x day, diet x drug x day
+
+add_anova_summary(percent_weight_m_aov3, "percent_weight_m")
+
+
 
 # Repeat in females
-percent_weight_aov3_f <- aov_ez(id = 'subject', 
+percent_weight_f_aov3 <- aov_ez(id = 'subject', 
                         dv = 'weight', 
                         data = percent_weight_long %>% filter(sex == 'F'), 
                         between = c('diet', 'drug'),
                         within = 'day'
                               )
-percent_weight_aov3_f
 
-aov_sig_sym(percent_weight_aov3_f)
-# main effect of drug, day
-# interaction of drug x day, diet x day, drug x diet x day
+aov_sig_sym(percent_weight_f_aov3, results_path)
+# main effect of drug, day (diet p = 0.078)
+# interaction of drug x day, diet x day
+
+add_anova_summary(percent_weight_f_aov3, "percent_weight_f")
 ```
 
 
@@ -333,12 +549,14 @@ intox_aov2 <- aov_ez(id = 'subject',
                      data = intox, 
                      between = c('sex', 'drug')
                      )
-intox_aov2
+
+# Use custom function `sig_sym()` to add significance label and save result as tibble
+aov_sig_sym(intox_aov2, results_path)
 # Main effect of sex, drug
 # No interaction
 
-# Use custom function `sig_sym()` to add significance label and save result as tibble
-aov_sig_sym(intox_aov2)
+add_anova_summary(intox_aov2, "intox")
+
 
 # Reformat data for three-way ANOVA across dose sessions (time)
 intox_long <- intox %>% select(!mean) %>% 
@@ -353,48 +571,43 @@ intox_aov3 <- aov_ez(id = 'subject',
                      between = c('sex', 'drug'),
                      within = 'session'
                      )
+
 intox_aov3
-# Main effect of sex, drug, session
-# sex x session, drug x session, sex x drug x session interaction
 
 # Use custom function `aov_sig_sym()` to add significance label and save result as tibble
-aov_sig_sym(intox_aov3)
+aov_sig_sym(intox_aov3, results_path)
+# Main effect of sex, drug, session
+# sex x session, drug x session interaction
+
+add_anova_summary(intox_aov3, "intox")
 
 
 # Post-hoc comparisons, could restrict to common factors (no interaction) with $contrasts[c()]
 # within session: [1] F PLX - M PLX [2] F PLX - F VEH [3] F PLX - M VEH [4] M PLX - F VEH [5] M PLX - M VEH [6] F PLX - M PLX
-# 72 comparisons total
-# Note: score_01 currently included but yields NA (all rats score 0)
+# 72 total comparisons reduced to 44 (those that share a factor level)
+# Note: score_01 skipped (all rats score 0)
+# Note: session are repeated measures, correct across all sessions (outside of emmeans())
 intox_aov3_post <- emmeans(intox_aov3, 
                            pairwise ~ sex * drug | session,
-                           adjust = "bonferroni")$contrasts %>% 
-  as_tibble()
+                           adjust = "none")$contrasts %>% 
+  as_tibble() %>% 
+  filter(session != "score_01") %>% 
+  filter(contrast %in% c("F PLX - M PLX",
+                         "F VEH - M VEH", 
+                         "F PLX - F VEH",
+                         "M PLX - M VEH")) %>% 
+  mutate(p.adj = p.adjust(p.value, method = "bonferroni")) # corrected for 44 comparisons
 
 # Use custom function `emm_sig_sym()` to add significance label and save result as tibble
-emm_sig_sym(intox_aov3_post)
+emm_sig_sym(intox_aov3_post, results_path)
 
 # Sig "main effect" diffs: score_04 F PLX - M PLX, score_10 F PLX - M PLX, score_10 F PLX - F VEH, score_11 F PLX - F VEH
 # also some interaction diffs: M PLX - F VEH, F PLX - M VEH
 ```
 
 ```{r Load and process daily dose}
-# Load dose data, retaining excluded subjects
-dose <- read_csv("data/dose.csv") # %>% filter(exclude == "N")
-
-# Check data
-slice_sample(dose, n = 6)
-
-# Calculate average dose per day per subject in daily_dose table
-daily_dose <- dose %>% 
-  mutate(day_01 = rowSums(select(., dose_01:dose_03)),
-         day_02 = rowSums(select(., dose_04:dose_06)),
-         day_03 = rowSums(select(., dose_07:dose_09)),
-         day_04 = rowSums(select(., dose_10:dose_12))) %>% 
-  select(!dose_01:dose_12)
-
-write_csv(daily_dose, "data/daily_dose.csv")
-
-###############################################################################
+# Load dose data
+dose <- read_csv("data/dose.csv") %>% filter(exclude == "N")
 
 # Load daily dose data
 daily_dose <- read_csv("data/daily_dose.csv") %>% filter(exclude == "N")
@@ -423,11 +636,14 @@ daily_dose_aov2 <- aov_ez(id = 'subject',
                      between = c('sex', 'drug')
                      )
 daily_dose_aov2
+
+
+# Use custom function `sig_sym()` to add significance label and save result as tibble
+aov_sig_sym(daily_dose_aov2, results_path)
 # Main effect of sex, drug
 # No interaction
 
-# Use custom function `sig_sym()` to add significance label and save result as tibble
-aov_sig_sym(daily_dose_aov2)
+add_anova_summary(daily_dose_aov2, "daily_dose")
 
 
 # Reformat data for three-way ANOVA across days (time)
@@ -443,28 +659,34 @@ daily_dose_aov3 <- aov_ez(id = 'subject',
                      between = c('sex', 'drug'),
                      within = 'day'
                      )
-daily_dose_aov3
-# Main effect of sex, drug, day
-# sex x day, drug x day, sex x drug x day interaction
 
 # Use custom function `aov_sig_sym()` to add significance label and save result as tibble
-aov_sig_sym(daily_dose_aov3)
+aov_sig_sym(daily_dose_aov3, results_path)
+# Main effect of sex, drug, day
+# No interactions (sex x day p = 0.06)
+
+add_anova_summary(daily_dose_aov3, "daily_dose")
 
 
-# Post-hoc comparisons, could restrict to common factors (no interaction) with $contrasts[c()]
+# Post-hoc comparisons, restrict to common factors (no interaction)
 # within day: [1] F PLX - M PLX [2] F PLX - F VEH [3] F PLX - M VEH [4] M PLX - F VEH [5] M PLX - M VEH [6] F PLX - M PLX
-# 24 comparisons total
+# 24 possible comparisons total
 daily_dose_aov3_post <- emmeans(daily_dose_aov3, 
                            pairwise ~ sex * drug | day,
-                           adjust = "bonferroni")$contrasts %>% 
-  as_tibble()
+                           adjust = "none")$contrasts %>% 
+  as_tibble() %>% 
+  filter(contrast %in% c("F PLX - M PLX",
+                         "F VEH - M VEH", 
+                         "F PLX - F VEH",
+                         "M PLX - M VEH")) %>% 
+  mutate(p.adj = p.adjust(p.value, method = "bonferroni")) # corrected for 16 comparisons
 
 # Use custom function `emm_sig_sym()` to add significance label and save result as tibble
-emm_sig_sym(daily_dose_aov3_post)
+emm_sig_sym(daily_dose_aov3_post, results_path)
 
-# main effect diffs: day_02 F PLX - M PLX, day_04 F PLX - F VEH
-# interaction diffs: day_02/03/04 M PLX - F VEH
+# main effect diffs: day_02 F PLX - M PLX
 ```
+
 
 ```{r Load and process blood ethanol concentration}
 # Load blood ethanol concentration (bec) data
@@ -489,10 +711,12 @@ bec_aov2 <- aov_ez(id = 'subject',
                      between = c('sex', 'drug')
                      )
 bec_aov2
-# No sig (sex p = 0.096)
+# No sig effects
 
 # Use custom function `sig_sym()` to add significance label and save result as tibble
-aov_sig_sym(bec_aov2)
+aov_sig_sym(bec_aov2, results_path)
+
+add_anova_summary(bec_aov2, "bec")
 ```
 
 ```{r Correlate bec and dose 7, bec and mean intox, bec and mean daily dose}
@@ -624,6 +848,12 @@ plot3
 ggsave("corr_BECvDailyDose.tiff", path = "data/graphs/", width = 6.5, height = 4.5, units = "in")
 ```
 
+
+############# RESULTS TABLES in "MGD56_ResultsTables.qmd" ######################
+
+```{r}
+flextable(anova_summary_df) %>% save_as_docx(., path = "data/results/anova_summary_df.docx")
+```
 
 ############# BONUS ANALYSIS ###################################################
 

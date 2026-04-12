@@ -1,5 +1,5 @@
 drug,sex,variable,n,mean,se
-PLX,F,mean,5,2.05,0.193
-PLX,M,mean,5,2.467,0.21
-VEH,F,mean,6,1.583,0.083
-VEH,M,mean,6,2,0.12
+PLX,F,mean,10,1.8,0.148
+PLX,M,mean,9,2.333,0.155
+VEH,F,mean,10,1.633,0.108
+VEH,M,mean,9,1.972,0.089
