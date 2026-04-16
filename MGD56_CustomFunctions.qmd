@@ -217,3 +217,140 @@ aov3 <- aov_ez(id = 'subject',
 anova_summary_df <- add_anova_summary(aov_res = aov3,
                                       data_name = "fjb_hippo")
 ```
+
+
+
+# Blinding and unblinding code
+
+## 1. Function to create a folder if it does not already exist
+```{r}
+create_folder <- function(folder_path) {
+  # Check if the folder exists
+  if (!dir.exists(folder_path)) {
+    # Create the folder if it doesn't exist
+    dir.create(folder_path, recursive = TRUE)  # 'recursive = TRUE' allows creation of parent directories if needed
+    cat("Folder created at:", folder_path, "\n")
+  } else {
+    cat("Folder already exists at:", folder_path, "\n")
+  }
+}
+
+# Example usage
+# create_folder("path/to/your/folder")
+```
+
+
+## 2. Blinding subjects pre-imaging
+
+Write `blind_subjects()` function to create blind code for slides (pre-imaging)
+
+```{r}
+# Function to create blind code for subjects
+# `subjects` is a .csv with subject meta data
+# `seed` is for replicability
+# `subsample` used to restrict blind code creation
+blind_subjects <- function(subjects, seed = 1, subsample = FALSE) {
+  
+  # Replicability
+  set.seed(seed)
+  
+  # Create blind code
+  blind <- c(LETTERS, str_c(LETTERS,LETTERS), str_c(LETTERS,LETTERS,LETTERS), str_c(LETTERS,LETTERS,LETTERS,LETTERS))
+  
+  # Sample without replacement
+  # Size in sample function equal to number of subjects to blind
+  if(subsample){
+    subsample <- blind[subsample[1]:subsample[2]]
+    blind_rand <- sample(subsample, 
+                         replace = FALSE)
+    }
+  else blind_rand <- sample(blind[1:nrow(subjects)], 
+                       size = nrow(subjects), 
+                       replace = FALSE)
+  
+  # Add blind code column to subject data
+  subjects_blinded <- subjects |> mutate(blind_code = blind_rand)
+  
+  return(subjects_blinded)
+}
+```
+
+
+Write `split_images()` function with the following arguments:
+- *blind_key*, a data table containing the blind code and unblinded information
+- *path_original*, a path to the original files
+- *path_blind*, a path to the renamed files
+Returns `renamed_images` data table with columns *image_name* (input file name), *new_name* (new file name), *path_input*, *path_output*
+
+Write `renamer()` function, passing in `renamed_images` and using column names as arguments to copy files and give new names.
+
+
+```{r}
+# Function to split image name, bind unblind information, and create new image name
+split_images <- function(blind_key, path_input, path_output) {
+  
+  # Create vector of file names to be renamed
+  image_name <- dir(path = path_input,
+           recursive = TRUE)
+
+  # Create the tibble and process the data
+  images <- tibble(image_name) |>  
+    separate_wider_delim(image_name, delim = "_", 
+                         names = c("stain", "study", "blind_code", "brain_region", "slideslice", "magnification"), 
+                         cols_remove = FALSE)
+  
+  # Read in blind key containing blind_code and unblind columns
+  unblind <- blind_key |> select(unblind, blind_code)
+  
+  # Bind blind_key data frame to images data frame
+  renamed_images <- left_join(images, unblind, by = 'blind_code')
+  
+  # Consolidate various columns into new image name column
+  # Remove blind_code column
+  # Add input and output path columns to file
+  renamed_images <- renamed_images |> 
+    select(!blind_code) |> 
+    unite("new_name", stain, study, unblind, brain_region, slideslice, magnification, sep = "_") |> 
+    mutate(path_input = path_input,
+           path_output = path_output)
+  
+  return(renamed_images)
+}
+```
+
+```{r}
+# Function to rename for blinding
+# Arguments obtained from columns of `renamed_images` data frame created by `split_images()`
+renamer <- function(image_name, new_name, path_input, path_output) {
+  file.copy(from = str_c(path_input, image_name),
+            to = str_c(path_output, new_name))
+}
+```
+
+
+Test `split_images()` and `renamer()` functions
+
+```{r include = FALSE}
+# Set location of data
+path <- "/Users/erc2866/Library/CloudStorage/Box-Box/Nixon Lab/Lab Member Data Files/Erika/MGD/MGD56/MicrogliaMorphology/"
+
+# Specify location of images
+path_in <- str_c(path, "test/")
+
+path_out <- str_c(path, "test_unblind/")
+
+# Load blind key
+subjects_blinded <- read_csv("data/iba1_blind_key.csv")
+
+# Create `<blind>` folder if it does not already exist
+create_folder(path_out)
+
+# Create tibble of split image names, including sex/diet/drug, using `split_images()`
+renamed_images <- split_images(blind_key = subjects_blinded,
+                       path_input = path_in, path_output = path_out) 
+
+
+# Unblind images
+pmap(renamed_images, renamer) # function applied to each portion of data frame
+```
+

@@ -290,108 +290,270 @@ fjb_summary %>% as_tibble() %>%
   write_csv(., str_c(lab_path, "fjb_summary.csv"))
 ```
 
-~~~~~~~~~~~~START SCRATCH~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### Inverse Hyberbolic Sine (ArcSinh) Transformation
+
+- ArcSinh transformation is similar to natural log for values greater than 1
+- Curve shifted slightly up (greater y-value) and slightly steeper slope
+- Behaves linearly between 0 and 1 and can handle 0s
+- https://www.statalist.org/forums/forum/general-stata-discussion/general/1553489-inverse-hyperbolic-sinc-transformation
+
+>**NOTE:** **Zero-inflated Poisson** distrubution is a type of modeling well-suited for count data with lots of zeros. It may be a better approach than transformation. See https://stats.oarc.ucla.edu/r/dae/zip/
+
+Using {ggplot2}
 
 ```{r}
-# testing ANOVA assumptions
+# asinh and log data
+x_asinh <- seq(-50, 50, length.out = 500)
+x_log <- seq(0.01, 50, length.out = 500)
+x_log10 <- seq(0.01, 50, length.out = 500)
 
-ggplot(fjb, aes(x = hippo)) +
-  geom_histogram(bins = 30) +
-  facet_wrap(~ drug + diet + sex)
+df_plot <- bind_rows(
+  tibble(x = x_asinh, y = asinh(x_asinh), fn = "asinh"),
+  tibble(x = x_log, y = log(x_log), fn = "log"),
+  tibble(x = x_log10, y = log10(x_log10), fn = "log10"))
 
-fjb <- fjb %>% mutate(hippo_log = log(hippo + 0.1)) # + x handles zeros, can warp data
-
-
-fjb <- fjb %>% mutate(hippo_sqrt = sqrt(hippo))
-
-
-fjb <- fjb %>% mutate(hippo_cbrt = sign(hippo) * abs(hippo)^(1/3))
-
-
-fjb <- fjb %>% mutate(hippo_ihs = asinh(hippo))
-
-
-fjb %>%
-  pivot_longer(cols = c(hippo, hippo_log, hippo_sqrt, hippo_cbrt, hippo_ihs),
-               names_to = "transform", values_to = "value") %>%
-  ggplot(aes(x = value)) +
-  geom_histogram(bins = 30) +
-  facet_wrap(~ transform, scales = "free")
-
-model <- aov(hippo ~ drug * diet * sex, data = fjb)
-model_log <- aov(hippo_log ~ drug * diet * sex, data = fjb)
-model_sqrt <- aov(hippo_sqrt ~ drug * diet * sex, data = fjb)
-model_ihs  <- aov(hippo_ihs  ~ drug * diet * sex, data = fjb)
-model_cbrt <- aov(hippo_cbrt ~ drug * diet * sex, data = fjb)
-
-shapiro.test(residuals(model))
-shapiro.test(residuals(model_log))
-shapiro.test(residuals(model_sqrt))
-shapiro.test(residuals(model_ihs))
-shapiro.test(residuals(model_cbrt))
-
-# Check if it helped
-shapiro.test(residuals(model))
-hist(residuals(model))
-qqnorm(residuals(model)); qqline(residuals(model))
-
-hist(fjb$hippo_sqrt)
-hist(fjb$hippo_log)
-hist(fjb$hippo)
-
-hist(fjb$hippo_ihs)
-
-# inverse hyperbolic sine transformation improves data structure, but still non-normal due to zero-inflation
+# Plot
+ggplot(df_plot, aes(x = x, y = y, color = fn)) +
+  geom_line() +
+  geom_hline(yintercept = 0, linetype = "dotted", color = "grey50") +
+  geom_vline(xintercept = 0, linetype = "dotted", color = "grey50") +
+  scale_color_manual(values = c("asinh" = "#185FA5", "log" = "green4", "log10" = "#E07B39"),
+                     labels = c("asinh", "log", "log10")) +
+  labs(x = "argument", y = "transformed", color = NULL) +
+  theme_bw() +
+  theme(
+    legend.position.inside = c(0.15, 0.85),
+    legend.justification = c(0, 1),
+    legend.background = element_rect(fill = "white", color = "grey80"),
+    legend.key.size = unit(0.5, "cm"),
+    axis.title.y = element_text(angle = 0, vjust = 0.5))
 ```
 
 ```{r}
-# permutation test
-install.packages("coin")
-library(coin)
+# asinh and log data, zoomed in
+x_asinh <- seq(-4, 4, length.out = 100)
+x_log <- seq(0.01, 4, length.out = 100)
+x_log10 <- seq(0.01, 4, length.out = 100)
 
-independence_test(hippo ~ drug * diet * sex, 
-                  data = fjb,
-                  distribution = approximate(nresample = 10000))
+df_plot <- bind_rows(
+  tibble(x = x_asinh, y = asinh(x_asinh), fn = "asinh"),
+  tibble(x = x_log, y = log(x_log), fn = "log"),
+  tibble(x = x_log10, y = log10(x_log10), fn = "log10"))
 
-install.packages("lmPerm")
-library(lmPerm)
-
-
-model_perm <- aovp(hippo ~ drug * diet * sex, 
-                   data = fjb, 
-                   perm = "Prob",
-                   maxIter = 10000)
-summary(model_perm)
-
-install.packages("pak")
-pak::pkg_install("rcompanion")
-library(rcompanion)
-
-# Diet effect within each drug * sex combination
-diet_results <- fjb %>%
-  group_by(drug, sex) %>%
-  group_modify(~ {
-    test <- pairwisePermutationTest(hippo ~ diet, data = .x, method = "none")
-    as.data.frame(test)
-  })
-
-# Drug effect within each diet * sex combination  
-drug_results <- fjb %>%
-  group_by(diet, sex) %>%
-  group_modify(~ {
-    test <- pairwisePermutationTest(hippo ~ drug, data = .x, method = "none")
-    as.data.frame(test)
-  })
-
-all_results <- bind_rows(diet_results, drug_results)
-all_results$p_adj <- p.adjust(all_results$p.value, method = "bonferroni")
-
-print(all_results)
+# Plot
+ggplot(df_plot, aes(x = x, y = y, color = fn)) +
+  geom_line() +
+  geom_hline(yintercept = 0, linetype = "dotted", color = "grey50") +
+  geom_vline(xintercept = 0, linetype = "dotted", color = "grey50") +
+  scale_color_manual(values = c("asinh" = "#185FA5", "log" = "green4", "log10" = "#E07B39"),
+                     labels = c("asinh", "log", "log10")) +
+  labs(x = "argument", y = "transformed", color = NULL) +
+  theme_bw() +
+  theme(
+    legend.position.inside = c(0.15, 0.85),
+    legend.justification = c(0, 1),
+    legend.background = element_rect(fill = "white", color = "grey80"),
+    legend.key.size = unit(0.5, "cm"),
+    axis.title.y = element_text(angle = 0, vjust = 0.5))
 ```
 
-~~~~~~~~~~~~END SCRATCH~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-**CURRENT ANALYSIS**
+Three-way ANOVAs using {afex} package
+
+```{r}
+results_path <- "data/results/fjb_asinh/"
+
+cols_to_transform <- names(fjb %>% select(cing_retro:BLA))
+
+asinh_fjb <- fjb %>%
+  select(subject:BLA) %>% 
+  mutate(across(
+  .cols = all_of(cols_to_transform),
+  .fns = ~ asinh(.), # handles zeros better than log + constant
+  .names = "{.col}"))
+
+# save select regions to graph in prism
+asinh_fjb_prism <- asinh_fjb %>% 
+  select(subject, drug, diet, sex, hippo:pirif_apirif) %>% 
+  arrange(diet, desc(drug), sex) %>% 
+  unite("group", drug, diet, sex, sep = "_") %>%
+  mutate(group = fct_inorder(group)) %>% # preserve arrange order
+  pivot_longer(-c(subject, group)) %>% 
+  pivot_wider(names_from = c(group, subject), values_from = value)
+
+# save to repository
+write_csv(asinh_fjb_prism, "data/asinh_fjb_prism.csv")
+
+# save to lab files
+write_csv(fjb_prism, str_c(lab_path, "asinh_fjb_prism.csv"))
+
+# hippo ------------------------------------------------------------------------
+fjb_hippo_aov3 <- aov_ez(id = 'subject', 
+                     dv = 'hippo', 
+                     data = asinh_fjb, 
+                     between = c('drug', 'diet', 'sex')
+                     )
+
+# Use custom function `aov_sig_sym()` to add significance label and save result as tibble
+aov_sig_sym(fjb_hippo_aov3, results_path)
+# Main effect of drug, diet (not sex)
+# drug x diet interaction
+
+add_anova_summary(fjb_hippo_aov3, "asinh_fjb_hippo")
+
+
+# Post-hoc comparisons, restrict to common factors (no interaction), within sex
+# 8 comparisons total
+fjb_hippo_aov3_post <- emmeans(fjb_hippo_aov3, 
+                           pairwise ~ drug * diet | sex,
+                           adjust = "none")$contrasts %>% 
+  as_tibble() %>% 
+  filter(contrast %in% c("PLX CON - VEH CON",
+                         "PLX CON - PLX EtOH", 
+                         "VEH CON - VEH EtOH",
+                         "PLX EtOH - VEH EtOH")) %>% 
+  mutate(p.adj = p.adjust(p.value, method = "bonferroni"))
+
+# Use custom function `emm_sig_sym()` to add significance label and save result as tibble
+emm_sig_sym(fjb_hippo_aov3_post, results_path)
+
+
+
+# dHippo -----------------------------------------------------------------------
+fjb_dhippo_aov3 <- aov_ez(id = 'subject', 
+                     dv = 'dHippo', 
+                     data = asinh_fjb, 
+                     between = c('drug', 'diet', 'sex')
+                     )
+
+# Use custom function `aov_sig_sym()` to add significance label and save result as tibble
+aov_sig_sym(fjb_dhippo_aov3, results_path)
+# No main effects, drug x diet and diet x sex interactions
+
+add_anova_summary(fjb_dhippo_aov3, "asinh_fjb_dHippo")
+
+# Post-hoc comparisons, restrict to common factors (no interaction), within sex
+# 8 comparisons total
+fjb_dhippo_aov3_post <- emmeans(fjb_dhippo_aov3, 
+                           pairwise ~ drug * diet | sex,
+                           adjust = "none")$contrasts %>% 
+  as_tibble() %>% 
+  filter(contrast %in% c("PLX CON - VEH CON",
+                         "PLX CON - PLX EtOH", 
+                         "VEH CON - VEH EtOH",
+                         "PLX EtOH - VEH EtOH")) %>% 
+  mutate(p.adj = p.adjust(p.value, method = "bonferroni"))
+
+# Use custom function `emm_sig_sym()` to add significance label and save result as tibble
+emm_sig_sym(fjb_dhippo_aov3_post, results_path)
+
+
+
+# vHippo -----------------------------------------------------------------------
+fjb_vhippo_aov3 <- aov_ez(id = 'subject', 
+                     dv = 'vHippo', 
+                     data = asinh_fjb, 
+                     between = c('drug', 'diet', 'sex')
+                     )
+
+# Use custom function `aov_sig_sym()` to add significance label and save result as tibble
+aov_sig_sym(fjb_vhippo_aov3, results_path)
+# Main effect of drug, diet (not sex)
+# drug x diet interaction
+
+add_anova_summary(fjb_vhippo_aov3, "asinh_fjb_vHippo")
+
+
+# Post-hoc comparisons, restrict to common factors (no interaction), within sex
+# 8 comparisons total
+fjb_vhippo_aov3_post <- emmeans(fjb_vhippo_aov3, 
+                           pairwise ~ drug * diet | sex,
+                           adjust = "none")$contrasts %>% 
+  as_tibble() %>% 
+  filter(contrast %in% c("PLX CON - VEH CON",
+                         "PLX CON - PLX EtOH", 
+                         "VEH CON - VEH EtOH",
+                         "PLX EtOH - VEH EtOH")) %>% 
+  mutate(p.adj = p.adjust(p.value, method = "bonferroni"))
+
+# Use custom function `emm_sig_sym()` to add significance label and save result as tibble
+emm_sig_sym(fjb_vhippo_aov3_post, results_path)
+# tranding difference PLX CON - PLX EtOH F (p = 0.0545)
+
+
+
+# peri_entor -------------------------------------------------------------------
+fjb_peri_entor_aov3 <- aov_ez(id = 'subject', 
+                     dv = 'peri_entor', 
+                     data = asinh_fjb, 
+                     between = c('drug', 'diet', 'sex')
+                     )
+
+# Use custom function `aov_sig_sym()` to add significance label and save result as tibble
+aov_sig_sym(fjb_peri_entor_aov3, results_path)
+# Main effect of drug, diet (not sex)
+# drug x diet interaction
+
+add_anova_summary(fjb_peri_entor_aov3, "asinh_fjb_peri_entor")
+
+
+# Post-hoc comparisons, restrict to common factors (no interaction), within sex
+# 8 comparisons total
+fjb_peri_entor_aov3_post <- emmeans(fjb_peri_entor_aov3, 
+                           pairwise ~ drug * diet | sex,
+                           adjust = "none")$contrasts %>% 
+  as_tibble() %>% 
+  filter(contrast %in% c("PLX CON - VEH CON",
+                         "PLX CON - PLX EtOH", 
+                         "VEH CON - VEH EtOH",
+                         "PLX EtOH - VEH EtOH")) %>% 
+  mutate(p.adj = p.adjust(p.value, method = "bonferroni"))
+
+# Use custom function `emm_sig_sym()` to add significance label and save result as tibble
+emm_sig_sym(fjb_peri_entor_aov3_post, results_path)
+# sig PLX CON - PLX EtOH F
+
+
+
+# pirif_apirif -----------------------------------------------------------------
+fjb_pirif_apirif_aov3 <- aov_ez(id = 'subject', 
+                     dv = 'pirif_apirif', 
+                     data = asinh_fjb, 
+                     between = c('drug', 'diet', 'sex')
+                     )
+
+# Use custom function `aov_sig_sym()` to add significance label and save result as tibble
+aov_sig_sym(fjb_pirif_apirif_aov3, results_path)
+# Main effect of diet (not drug or sex)
+# drug x diet interaction
+
+add_anova_summary(fjb_pirif_apirif_aov3, "asinh_fjb_pirif_apirif")
+
+
+# Post-hoc comparisons, restrict to common factors (no interaction), within sex
+# 8 comparisons total
+fjb_pirif_apirif_aov3_post <- emmeans(fjb_pirif_apirif_aov3, 
+                           pairwise ~ drug * diet | sex,
+                           adjust = "none")$contrasts %>% 
+  as_tibble() %>% 
+  filter(contrast %in% c("PLX CON - VEH CON",
+                         "PLX CON - PLX EtOH", 
+                         "VEH CON - VEH EtOH",
+                         "PLX EtOH - VEH EtOH")) %>% 
+  mutate(p.adj = p.adjust(p.value, method = "bonferroni"))
+
+# Use custom function `emm_sig_sym()` to add significance label and save result as tibble
+emm_sig_sym(fjb_pirif_apirif_aov3_post, results_path)
+```
+
+```{r}
+flextable(anova_summary_df) %>% save_as_docx(., path = "data/results/anova_summary_df_fjb.docx")
+```
+
+
+
+**OTHER ANALYSIS**
 
 Three-way ANOVAs using {afex} package
 
@@ -699,199 +861,107 @@ emm_sig_sym(fjb_pirif_apirif_aov3_post, results_path)
 ```
 
 
-## Inverse Hyberbolic Sine (IHS) Transformation
 
-Three-way ANOVAs using {afex} package
+~~~~~~~~~~~~START SCRATCH~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ```{r}
-results_path <- "data/results/fjb_ihs/"
+# testing ANOVA assumptions
 
-cols_to_transform <- names(fjb %>% select(cing_retro:BLA))
+ggplot(fjb, aes(x = hippo)) +
+  geom_histogram(bins = 30) +
+  facet_wrap(~ drug + diet + sex)
 
-ihs_fjb <- fjb %>%
-  select(subject:BLA) %>% 
-  mutate(across(
-  .cols = all_of(cols_to_transform),
-  .fns = ~ asinh(.), # handles zeros better than log + constant
-  .names = "{.col}"))
-
-# save select regions to graph in prism
-ihs_fjb_prism <- ihs_fjb %>% 
-  select(subject, drug, diet, sex, hippo:pirif_apirif) %>% 
-  arrange(diet, desc(drug), sex) %>% 
-  unite("group", drug, diet, sex, sep = "_") %>%
-  mutate(group = fct_inorder(group)) %>% # preserve arrange order
-  pivot_longer(-c(subject, group)) %>% 
-  pivot_wider(names_from = c(group, subject), values_from = value)
-
-# save to repository
-write_csv(ihs_fjb_prism, "data/ihs_fjb_prism.csv")
-
-# save to lab files
-write_csv(fjb_prism, str_c(lab_path, "ihs_fjb_prism.csv"))
-
-# hippo ------------------------------------------------------------------------
-fjb_hippo_aov3 <- aov_ez(id = 'subject', 
-                     dv = 'hippo', 
-                     data = ihs_fjb, 
-                     between = c('drug', 'diet', 'sex')
-                     )
-
-# Use custom function `aov_sig_sym()` to add significance label and save result as tibble
-aov_sig_sym(fjb_hippo_aov3, results_path)
-# Main effect of drug, diet (not sex)
-# drug x diet interaction
-
-add_anova_summary(fjb_hippo_aov3, "ihs_fjb_hippo")
+fjb <- fjb %>% mutate(hippo_log = log(hippo + 0.1)) # + x handles zeros, can warp data
 
 
-# Post-hoc comparisons, restrict to common factors (no interaction), within sex
-# 8 comparisons total
-fjb_hippo_aov3_post <- emmeans(fjb_hippo_aov3, 
-                           pairwise ~ drug * diet | sex,
-                           adjust = "none")$contrasts %>% 
-  as_tibble() %>% 
-  filter(contrast %in% c("PLX CON - VEH CON",
-                         "PLX CON - PLX EtOH", 
-                         "VEH CON - VEH EtOH",
-                         "PLX EtOH - VEH EtOH")) %>% 
-  mutate(p.adj = p.adjust(p.value, method = "bonferroni"))
-
-# Use custom function `emm_sig_sym()` to add significance label and save result as tibble
-emm_sig_sym(fjb_hippo_aov3_post, results_path)
+fjb <- fjb %>% mutate(hippo_sqrt = sqrt(hippo))
 
 
-
-# dHippo -----------------------------------------------------------------------
-fjb_dhippo_aov3 <- aov_ez(id = 'subject', 
-                     dv = 'dHippo', 
-                     data = ihs_fjb, 
-                     between = c('drug', 'diet', 'sex')
-                     )
-
-# Use custom function `aov_sig_sym()` to add significance label and save result as tibble
-aov_sig_sym(fjb_dhippo_aov3, results_path)
-# No main effects, drug x diet and diet x sex interactions
-
-add_anova_summary(fjb_dhippo_aov3, "ihs_fjb_dHippo")
-
-# Post-hoc comparisons, restrict to common factors (no interaction), within sex
-# 8 comparisons total
-fjb_dhippo_aov3_post <- emmeans(fjb_dhippo_aov3, 
-                           pairwise ~ drug * diet | sex,
-                           adjust = "none")$contrasts %>% 
-  as_tibble() %>% 
-  filter(contrast %in% c("PLX CON - VEH CON",
-                         "PLX CON - PLX EtOH", 
-                         "VEH CON - VEH EtOH",
-                         "PLX EtOH - VEH EtOH")) %>% 
-  mutate(p.adj = p.adjust(p.value, method = "bonferroni"))
-
-# Use custom function `emm_sig_sym()` to add significance label and save result as tibble
-emm_sig_sym(fjb_dhippo_aov3_post, results_path)
+fjb <- fjb %>% mutate(hippo_cbrt = sign(hippo) * abs(hippo)^(1/3))
 
 
-
-# vHippo -----------------------------------------------------------------------
-fjb_vhippo_aov3 <- aov_ez(id = 'subject', 
-                     dv = 'vHippo', 
-                     data = ihs_fjb, 
-                     between = c('drug', 'diet', 'sex')
-                     )
-
-# Use custom function `aov_sig_sym()` to add significance label and save result as tibble
-aov_sig_sym(fjb_vhippo_aov3, results_path)
-# Main effect of drug, diet (not sex)
-# drug x diet interaction
-
-add_anova_summary(fjb_vhippo_aov3, "ihs_fjb_vHippo")
+fjb <- fjb %>% mutate(hippo_ihs = asinh(hippo))
 
 
-# Post-hoc comparisons, restrict to common factors (no interaction), within sex
-# 8 comparisons total
-fjb_vhippo_aov3_post <- emmeans(fjb_vhippo_aov3, 
-                           pairwise ~ drug * diet | sex,
-                           adjust = "none")$contrasts %>% 
-  as_tibble() %>% 
-  filter(contrast %in% c("PLX CON - VEH CON",
-                         "PLX CON - PLX EtOH", 
-                         "VEH CON - VEH EtOH",
-                         "PLX EtOH - VEH EtOH")) %>% 
-  mutate(p.adj = p.adjust(p.value, method = "bonferroni"))
+fjb %>%
+  pivot_longer(cols = c(hippo, hippo_log, hippo_sqrt, hippo_cbrt, hippo_ihs),
+               names_to = "transform", values_to = "value") %>%
+  ggplot(aes(x = value)) +
+  geom_histogram(bins = 30) +
+  facet_wrap(~ transform, scales = "free")
 
-# Use custom function `emm_sig_sym()` to add significance label and save result as tibble
-emm_sig_sym(fjb_vhippo_aov3_post, results_path)
-# tranding difference PLX CON - PLX EtOH F (p = 0.0545)
+model <- aov(hippo ~ drug * diet * sex, data = fjb)
+model_log <- aov(hippo_log ~ drug * diet * sex, data = fjb)
+model_sqrt <- aov(hippo_sqrt ~ drug * diet * sex, data = fjb)
+model_ihs  <- aov(hippo_ihs  ~ drug * diet * sex, data = fjb)
+model_cbrt <- aov(hippo_cbrt ~ drug * diet * sex, data = fjb)
 
+shapiro.test(residuals(model))
+shapiro.test(residuals(model_log))
+shapiro.test(residuals(model_sqrt))
+shapiro.test(residuals(model_ihs))
+shapiro.test(residuals(model_cbrt))
 
+# Check if it helped
+shapiro.test(residuals(model))
+hist(residuals(model))
+qqnorm(residuals(model)); qqline(residuals(model))
 
-# peri_entor -------------------------------------------------------------------
-fjb_peri_entor_aov3 <- aov_ez(id = 'subject', 
-                     dv = 'peri_entor', 
-                     data = ihs_fjb, 
-                     between = c('drug', 'diet', 'sex')
-                     )
+hist(fjb$hippo_sqrt)
+hist(fjb$hippo_log)
+hist(fjb$hippo)
 
-# Use custom function `aov_sig_sym()` to add significance label and save result as tibble
-aov_sig_sym(fjb_peri_entor_aov3, results_path)
-# Main effect of drug, diet (not sex)
-# drug x diet interaction
+hist(fjb$hippo_ihs)
 
-add_anova_summary(fjb_peri_entor_aov3, "ihs_fjb_peri_entor")
-
-
-# Post-hoc comparisons, restrict to common factors (no interaction), within sex
-# 8 comparisons total
-fjb_peri_entor_aov3_post <- emmeans(fjb_peri_entor_aov3, 
-                           pairwise ~ drug * diet | sex,
-                           adjust = "none")$contrasts %>% 
-  as_tibble() %>% 
-  filter(contrast %in% c("PLX CON - VEH CON",
-                         "PLX CON - PLX EtOH", 
-                         "VEH CON - VEH EtOH",
-                         "PLX EtOH - VEH EtOH")) %>% 
-  mutate(p.adj = p.adjust(p.value, method = "bonferroni"))
-
-# Use custom function `emm_sig_sym()` to add significance label and save result as tibble
-emm_sig_sym(fjb_peri_entor_aov3_post, results_path)
-# sig PLX CON - PLX EtOH F
-
-
-
-# pirif_apirif -----------------------------------------------------------------
-fjb_pirif_apirif_aov3 <- aov_ez(id = 'subject', 
-                     dv = 'pirif_apirif', 
-                     data = ihs_fjb, 
-                     between = c('drug', 'diet', 'sex')
-                     )
-
-# Use custom function `aov_sig_sym()` to add significance label and save result as tibble
-aov_sig_sym(fjb_pirif_apirif_aov3, results_path)
-# Main effect of diet (not drug or sex)
-# drug x diet interaction
-
-add_anova_summary(fjb_pirif_apirif_aov3, "ihs_fjb_pirif_apirif")
-
-
-# Post-hoc comparisons, restrict to common factors (no interaction), within sex
-# 8 comparisons total
-fjb_pirif_apirif_aov3_post <- emmeans(fjb_pirif_apirif_aov3, 
-                           pairwise ~ drug * diet | sex,
-                           adjust = "none")$contrasts %>% 
-  as_tibble() %>% 
-  filter(contrast %in% c("PLX CON - VEH CON",
-                         "PLX CON - PLX EtOH", 
-                         "VEH CON - VEH EtOH",
-                         "PLX EtOH - VEH EtOH")) %>% 
-  mutate(p.adj = p.adjust(p.value, method = "bonferroni"))
-
-# Use custom function `emm_sig_sym()` to add significance label and save result as tibble
-emm_sig_sym(fjb_pirif_apirif_aov3_post, results_path)
+# inverse hyperbolic sine transformation improves data structure, but still non-normal due to zero-inflation
 ```
 
 ```{r}
-flextable(anova_summary_df) %>% save_as_docx(., path = "data/results/anova_summary_df_fjb.docx")
+# permutation test
+install.packages("coin")
+library(coin)
+
+independence_test(hippo ~ drug * diet * sex, 
+                  data = fjb,
+                  distribution = approximate(nresample = 10000))
+
+install.packages("lmPerm")
+library(lmPerm)
+
+
+model_perm <- aovp(hippo ~ drug * diet * sex, 
+                   data = fjb, 
+                   perm = "Prob",
+                   maxIter = 10000)
+summary(model_perm)
+
+install.packages("pak")
+pak::pkg_install("rcompanion")
+library(rcompanion)
+
+# Diet effect within each drug * sex combination
+diet_results <- fjb %>%
+  group_by(drug, sex) %>%
+  group_modify(~ {
+    test <- pairwisePermutationTest(hippo ~ diet, data = .x, method = "none")
+    as.data.frame(test)
+  })
+
+# Drug effect within each diet * sex combination  
+drug_results <- fjb %>%
+  group_by(diet, sex) %>%
+  group_modify(~ {
+    test <- pairwisePermutationTest(hippo ~ drug, data = .x, method = "none")
+    as.data.frame(test)
+  })
+
+all_results <- bind_rows(diet_results, drug_results)
+all_results$p_adj <- p.adjust(all_results$p.value, method = "bonferroni")
+
+print(all_results)
 ```
+
+~~~~~~~~~~~~END SCRATCH~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
 # Archived code

@@ -256,4 +256,35 @@ renamed_images <- split_images(blind_key = subjects_blinded,
 pmap(renamed_images, renamer) # function applied to each portion of data frame
 ```
 
+#### Run functions to unblind image names
+**2026-04-12**
 
+Notes
+
+- There is a single LLL image, taken 2/26/26 between L and MM
+- Iba1_MGD56_R_dHippo_1-10_20X, todo: rename dHippo to **DGML**
+
+
+```{r}
+# Set location of data
+path <- "/Users/erc2866/Library/CloudStorage/Box-Box/Nixon Lab/Lab Member Data Files/Erika/MGD/MGD56/MicrogliaMorphology/"
+
+# Specify location of images
+path_in <- str_c(path, "images_blind/") # customize
+
+path_out <- str_c(path, "images_unblind/") # customize
+
+# Load blind key
+subjects_blinded <- read_csv("data/iba1_blind_key.csv")
+
+# Create `<blind>` folder if it does not already exist
+create_folder(path_out)
+
+# Create tibble of split image names, including sex/diet/drug, using `split_images()`
+renamed_images <- split_images(blind_key = subjects_blinded,
+                       path_input = path_in, path_output = path_out) 
+
+
+# Unblind images
+pmap(renamed_images, renamer) # function applied to each portion of data frame
+```

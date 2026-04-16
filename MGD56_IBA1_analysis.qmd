@@ -1,0 +1,235 @@
+---
+title: "Iba1_analysis"
+author: "Erika Carlson"
+format: html
+editor_options: 
+  chunk_output_type: console
+---
+
+# Count Analysis of Iba1
+
+Using *Density* output from "MGD56_MicrogliaMorphology.qmd"
+
+
+
+# Preliminaries
+
+- Load {tidyverse}
+
+```{r}
+#| include: false
+#| message: false
+library(tidyverse) # for data wrangling
+library(glue) # for data wrangling
+library(rstatix) # for data analysis
+library(afex) # for data analysis
+
+# Indicate path to save results
+results_path <- "data/results/MicrogliaMorphology/"
+
+# Indicate path to lab files
+lab_path <- "/Users/erc2866/Library/CloudStorage/Box-Box/Nixon Lab/Lab Member Data Files/Erika/MGD/MGD56/MicrogliaMorphology/"
+```
+
+## Make sure custom functions from "MGD56_CustomFunctions.qmd" are loaded
+
+
+
+--------------------------------------------------------------------------------
+# Run select code from "MGD56_MicrogliaMorphology.qmd"
+
+>**NOTE:** SKIP if *Density* df is loaded ("iba1_density.csv")
+
+## Preliminaries
+
+References 
+
+- https://github.com/ciernialab/MicrogliaMorphologyR
+- https://ciernialab.github.io/MicrogliaMorphologyR/articles/MicrogliaMorphologyR.html
+
+Install {MicrogliaMorphologyR}
+```{r}
+# install devtools package and make sure you have the latest version
+install.packages("devtools")
+
+# install MicrogliaMorphologyR using devtools
+devtools::install_github('ciernialab/MicrogliaMorphologyR')
+```
+
+Load packages and set seed for reproducibility of results
+```{r}
+library(MicrogliaMorphologyR)
+library(factoextra)
+library(ppclust)
+```
+
+```{r}
+set.seed(10)
+```
+
+
+## Load fraclac and skeleton data, tidy, and merge into final data frame
+
+> *NOTE:* FracLac directory has a subfolder
+
+```{r}
+mm.dir <- "/Users/erc2866/Library/CloudStorage/Box-Box/Nixon Lab/Lab Member Data Files/Erika/MGD/MGD56/MicrogliaMorphology/batch1/"
+fraclac.dir <- str_c(mm.dir, "FracLac/20260413091437")
+skeleton.dir <- str_c(mm.dir, "SkeletonResults")
+
+# May be time-intensive if analyzing on the order of 1000s of cells
+fraclac <- fraclac_tidying(fraclac.dir) 
+skeleton <- skeleton_tidying(skeleton.dir)
+
+data <- merge_data(fraclac, skeleton)
+# Final data set parameters                                                            
+finaldata <- metadata_columns(data, c("Stain","Study","RatID","Sex","Drug","Diet","BrainRegion","SlideSlice","Magnification"), sep="_")
+```
+
+## Obtain microglia number and density per image
+
+```{r}
+# list out all variables of interest present in the original image names to obtain numbers of microglia per image
+microglianumbers <- samplesize(finaldata, Stain, Study, RatID, Sex, Drug, Diet, BrainRegion, SlideSlice, Magnification) 
+microglianumbers %>% print(n=3, width=Inf)
+
+# add Name column back in -- make sure that the resulting strings in the Name column match the names of your original input .tiff files that you used for MicrogliaMorphology !!
+microglianumbers <- microglianumbers %>% unite("Name", Stain:Magnification, sep="_", remove=FALSE) 
+microglianumbers %>% print(n=3, width=Inf)
+
+# path to Areas.csv file
+AreasPath <- "/Users/erc2866/Library/CloudStorage/Box-Box/Nixon Lab/Lab Member Data Files/Erika/MGD/MGD56/MicrogliaMorphology/batch1/Areas.csv"
+
+# use celldensity function to calculate density at image-level: values are under the "Density" column
+Density <- celldensity(AreasPath, microglianumbers)
+#> Warning: Expected 2 pieces. Additional pieces discarded in 148 rows [1, 2, 3, 4, 5, 6,
+#> 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, ...].
+Density %>% print(n=5, width=Inf)
+
+# Group by variables of interest
+Density %>% 
+  group_by(RatID, Sex, Drug, Diet, BrainRegion) %>%
+  summarise(num=sum(num), Area=sum(Area)) %>% # calculate new cell numbers and new areas at the brain region level
+  mutate(Density=num/Area) # calculate new density at the brain region level
+```
+
+--------------------------------------------------------------------------------
+
+
+# Statistical Analysis
+
+```{r}
+Density <- read_csv(str_c(results_path, "iba1_density.csv"))
+
+# prepare data for downstream analysis
+data <- Density %>% 
+  group_by(RatID, Diet, Drug, Sex, BrainRegion) %>% 
+  summarise(across("num", ~mean(.x)), .groups = "drop") %>% 
+  gather(Measure, Value, "num") %>% 
+  arrange(BrainRegion, Diet, desc(Drug), Sex, RatID)
+#> `summarise()` has grouped output by 'RatID', 'Sex', 'Drug', 'Diet'. You can override using the `.groups` argument.
+
+# data  <- data[-99, ] (one image with dHippo not DGML)
+
+# save to graph in prism
+iba1_prism <- data %>% 
+  select(-Measure) %>% 
+  unite("Group", Drug, Diet, Sex, sep = "_") %>%
+  mutate(Group = fct_inorder(Group)) %>% # preserve arrange order
+  pivot_longer(-c(RatID, Group, BrainRegion)) %>% 
+  pivot_wider(names_from = c(Group, RatID), values_from = value)
+
+# save to repository
+write_csv(iba1_prism, "data/iba1_prism.csv")
+
+# save to lab files
+write_csv(iba1_prism, str_c(lab_path, "iba1_prism.csv"))
+```
+
+## Calculate average per subject per region
+
+```{r}
+# Calculate percentage change
+data_sum <- data %>% 
+  group_by(BrainRegion, Drug, Diet, Sex) %>% 
+  summarise(mean = mean(Value)) %>% 
+  ungroup() %>%
+  pivot_wider(names_from = c('Drug'), values_from = 'mean') %>% 
+  mutate(percent_loss = (`VEH` - `PLX`) / `VEH` * 100)
+data_sum
+
+# Export .csv files to repository
+write_csv(data, "data/iba1_counts.csv")
+write_csv(data_sum, "data/iba1_percentdiff.csv")
+
+# Export .csv files to lab files
+write_csv(data, str_c(lab_path, "iba1_counts.csv"))
+write_csv(data_sum, str_c(lab_path, "iba1_percentdiff.csv"))
+
+```
+
+## ANOVAs
+
+```{r}
+# hippo ------------------------------------------------------------------------
+iba1_hippo_aov3 <- aov_ez(id = 'RatID', 
+                     dv = 'Value', 
+                     data = data %>% filter(BrainRegion == "DGML"), 
+                     between = c('Drug', 'Diet', 'Sex')
+                     )
+
+# Use custom function `aov_sig_sym()` to add significance label and save result as tibble
+aov_sig_sym(iba1_hippo_aov3, results_path)
+# Main effect of drug
+
+add_anova_summary(iba1_hippo_aov3, "iba1_hippo")
+
+
+# Post-hoc comparisons, restrict to common factors (no interaction), within sex
+# 8 comparisons total
+iba1_hippo_aov3_post <- emmeans(iba1_hippo_aov3, 
+                           pairwise ~ Drug * Diet | Sex,
+                           adjust = "none")$contrasts %>% 
+  as_tibble() %>% 
+  filter(contrast %in% c("PLX CON - VEH CON",
+                         "PLX CON - PLX EtOH", 
+                         "VEH CON - VEH EtOH",
+                         "PLX EtOH - VEH EtOH")) %>% 
+  mutate(p.adj = p.adjust(p.value, method = "bonferroni"))
+
+# Use custom function `emm_sig_sym()` to add significance label and save result as tibble
+emm_sig_sym(iba1_hippo_aov3_post, results_path)
+
+
+# rhinal ------------------------------------------------------------------------
+iba1_rhinal_aov3 <- aov_ez(id = 'RatID', 
+                     dv = 'Value', 
+                     data = data %>% filter(BrainRegion == "Rhinal"), 
+                     between = c('Drug', 'Diet', 'Sex')
+                     )
+
+# Use custom function `aov_sig_sym()` to add significance label and save result as tibble
+aov_sig_sym(iba1_rhinal_aov3, results_path)
+# Main effect of drug
+
+add_anova_summary(iba1_rhinal_aov3, "iba1_rhinal")
+
+
+# Post-hoc comparisons, restrict to common factors (no interaction), within sex
+# 8 comparisons total
+iba1_rhinal_aov3_post <- emmeans(iba1_rhinal_aov3, 
+                           pairwise ~ Drug * Diet | Sex,
+                           adjust = "none")$contrasts %>% 
+  as_tibble() %>% 
+  filter(contrast %in% c("PLX CON - VEH CON",
+                         "PLX CON - PLX EtOH", 
+                         "VEH CON - VEH EtOH",
+                         "PLX EtOH - VEH EtOH")) %>% 
+  mutate(p.adj = p.adjust(p.value, method = "bonferroni"))
+
+# Use custom function `emm_sig_sym()` to add significance label and save result as tibble
+emm_sig_sym(iba1_rhinal_aov3_post, results_path)
+
+```
+
+The `echo: false` option disables the printing of code (only output is displayed).

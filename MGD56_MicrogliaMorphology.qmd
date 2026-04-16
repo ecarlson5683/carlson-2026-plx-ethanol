@@ -30,16 +30,38 @@ Blood ethanol concentration (BEC; mg/dL) was determined from tail blood collecte
 Tissue was prepared by phosphate-buffered saline perfusion (PBS), brain extraction and bisection, at least 24 h post-fixation in 4% paraformaldehyde (PFA) at 4°C, and storage in PBS at 4°C until sliced 1:12 series at 40 um thickness on vibrating microtome. Tissue slices were stored in cryoprotectant at -20°C until immunohistochemical assay.
 
 Slides were blinded prior to imaging and unblinded prior to MicrogliaMorphology ImageJ analysis due to file naming conventions.
-- Blinding and unblinding code found in Slide_blinding.qmd
+
+- Blinding and unblinding code found in "Slide_blinding.qmd"
 
 Microglia were analyzed using the MicrogliaMorphology ImageJ macros and {MicrogliaMorphologyR} package
+
+- Preprocessing (output in "SingleChannelTiffs_Input/") using "MicrogliaMorphology_Preprocessing_Macro_2025-12-18.ijm" macro
+
+```
+run("8-bit"); //convert from RBG to 8-bit image
+run("Invert"); //invert image for dark background
+run("Set Scale...", "distance=144 known=50.06 unit=µm");
+```
 
 MicrogliaMorphology detailed here:
 
 - https://github.com/ciernialab/MicrogliaMorphology/tree/main
 - https://www.youtube.com/watch?v=YhLCdlFLzk8
 
-.ijm files required some edits to work which usually involved splitting nested arguments into two lines (detailed in "MicrogliaMorphology_README_ERC.docx"). Individual MM steps worked best. 
+For BioVoxel_Toolbox > Threshold Check > Checked items:
+
+- bright objects on dark background
+- ignore black (default=off)
+- Quantification (relative)
+
+Batch1 (dark), Batch2 (light)
+
+- Sensitivity: 82
+- Hunang does not do well with few microglia
+- Triangle is a bit sparse but does separate
+- Copied "SingleCells/" folder to repository "data/results/MicrogliaMorphology/batch<#>/" to read files into FracLac (issue with cloud-based storage?)
+
+".ijm" files required some edits to work which usually involved splitting nested arguments into two lines (detailed in "/MicrogliaMorphology/README.docx"). Used individual MM steps. 
 
 
 
@@ -80,18 +102,19 @@ set.seed(10)
 > *NOTE:* FracLac directory has a subfolder
 
 ```{r}
-fraclac.dir <- "/Users/erc2866/Library/CloudStorage/Box-Box/Nixon Lab/Lab Member Data Files/Erika/MGD/MGD56/MicrogliaMorphology/FracLac/20251219030337"
-skeleton.dir <- "/Users/erc2866/Library/CloudStorage/Box-Box/Nixon Lab/Lab Member Data Files/Erika/MGD/MGD56/MicrogliaMorphology/SkeletonResults"
+results_path <- "/Users/erc2866/Development/Repos/carlson-2026-plx-ethanol/data/results/MicrogliaMorphology/"
+
+mm.dir <- "/Users/erc2866/Library/CloudStorage/Box-Box/Nixon Lab/Lab Member Data Files/Erika/MGD/MGD56/MicrogliaMorphology/all/"
+fraclac.dir <- str_c(mm.dir, "FracLac/20260413013210")
+skeleton.dir <- str_c(mm.dir, "SkeletonResults")
 
 # May be time-intensive if analyzing on the order of 1000s of cells
 fraclac <- fraclac_tidying(fraclac.dir) 
 skeleton <- skeleton_tidying(skeleton.dir)
 
 data <- merge_data(fraclac, skeleton)
-finaldata <- metadata_columns(data, c("Stain","Study","RatID-Slide-Slice","BrainRegion","Magnification"), sep="_")
-
 # Final data set parameters                                                            
-# finaldata <- metadata_columns(data, c("Stain","Study","RatID","Sex","Drug","Diet","BrainRegion","Slide-Slice","Magnification"), sep="_")
+finaldata <- metadata_columns(data, c("Stain","Study","RatID","Sex","Drug","Diet","BrainRegion","SlideSlice","Magnification"), sep="_")
 ```
 
 
@@ -100,16 +123,287 @@ finaldata <- metadata_columns(data, c("Stain","Study","RatID-Slide-Slice","Brain
 Explore the morphology features measured by MicrogliaMorphology and how they relate to each other by generating a heatmap of spearman’s correlations across the 27 different morphology features.
 ```{r}
 featurecorrelations(finaldata,
-                    featurestart=8, featureend=34,
+                    featurestart=12, featureend=38, # start/end of measure cols
                     rthresh=0.8, pthresh=0.05,
                     title="Correlations across features")
 
 # to get the underlying stats depicted in the heatmap
+# ensure start/end of measure cols matches finaldata
 correlationstats <- featurecorrelations_stats(finaldata,
-                                              featurestart=8, featureend=34,
+                                              featurestart=12, featureend=38, 
                                               rthresh=0.8, pthresh=0.05)
 correlationstats %>% head()
 ```
+
+## Exploratory data visualization
+
+```{r}
+# gather your numerical morphology data into one column ('measure') which contains the feature name, and another column ('value') which contains measured values
+finaldata_gathered <- finaldata %>% gather(measure, value, 12:ncol(finaldata))
+
+# check for outliers
+outliers_boxplots(finaldata_gathered)
+
+outliers_distributions(finaldata_gathered)
+
+# checking different normalization features
+normalize_logplots(finaldata_gathered,1)
+
+normalize_minmax(finaldata_gathered)
+
+normalize_scaled(finaldata_gathered)
+
+# transform data for downstream analyses
+# using logtransformed data as PCA input
+finaldata_logtransformed <- transform_log(finaldata, 1, start=12, end=38) 
+finaldata_minmaxtransformed <- transform_minmax(finaldata, start=12, end=38)
+finaldata_scaled <- transform_scale(finaldata, start=12, end=38)
+
+# get sample size of data based on factors of interest
+# "RatID","Sex","Drug","Diet","BrainRegion"
+samplesize(finaldata, RatID, Sex, Drug, Diet, BrainRegion)
+samplesize(finaldata, Sex, Drug, Diet, BrainRegion)
+```
+
+
+### Obtain microglia number and density per image
+
+```{r}
+# list out all variables of interest present in the original image names to obtain numbers of microglia per image
+microglianumbers <- samplesize(finaldata, Stain, Study, RatID, Sex, Drug, Diet, BrainRegion, SlideSlice, Magnification) 
+microglianumbers %>% print(n=3, width=Inf)
+
+# add Name column back in -- make sure that the resulting strings in the Name column match the names of your original input .tiff files that you used for MicrogliaMorphology !!
+microglianumbers <- microglianumbers %>% unite("Name", Stain:Magnification, sep="_", remove=FALSE) 
+microglianumbers %>% print(n=3, width=Inf)
+
+# path to Areas.csv file
+AreasPath <- str_c(mm.dir, "Areas.csv")
+
+# use celldensity function to calculate density at image-level: values are under the "Density" column
+Density <- celldensity(AreasPath, microglianumbers)
+#> Warning: Expected 2 pieces. Additional pieces discarded in 148 rows [1, 2, 3, 4, 5, 6,
+#> 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, ...].
+Density %>% print(n=5, width=Inf)
+
+# Group by variables of interest
+Density %>% 
+  group_by(RatID, Sex, Drug, Diet, BrainRegion) %>%
+  summarise(num=sum(num), Area=sum(Area)) %>% # calculate new cell numbers and new areas at the brain region level
+  mutate(Density=num/Area) # calculate new density at the brain region level
+
+write_csv(Density, str_c(results_path, "iba1_density.csv"))
+```
+
+## PCA
+
+```{r}
+pcadata_elbow(finaldata_logtransformed, featurestart=12, featureend=38)
+
+pca_data <- pcadata(finaldata_logtransformed, featurestart=12, featureend=38,
+                    pc.start=1, pc.end=10)
+head(pca_data,3)
+```
+
+### Generate heatmap of correlations between PCs and features
+
+```{r}
+pcfeaturecorrelations(pca_data, pc.start=1, pc.end=3, 
+                      feature.start=22, feature.end=48, 
+                      rthresh=0.75, pthresh=0.05, 
+                      title="Correlation between PCs and features")
+
+# to get the underlying stats depicted in the heatmap above
+correlationstats <- pcfeaturecorrelations_stats(pca_data, pc.start=1, pc.end=3,
+                                                feature.start=22, feature.end=48,
+                                                rthresh=0.75, pthresh=0.05)
+correlationstats %>% head()
+```
+
+### Visually explore sources of variability
+
+```{r}
+# gather your data by experimental variables (e.g., Treatment, Sex, MouseID, etc.)
+gathered_expvariables <- pca_data %>% gather(variable, value, 13:17) 
+
+plots_expvariable(gathered_expvariables, "PC1", "PC2")
+```
+
+### K-means clustering on PCs
+
+```{r}
+# Prepare the data
+
+## for k-means clustering: scale PCs 1-3, which together describe ~85% of variability
+pca_data_scale <- transform_scale(pca_data, start=1, end=3) # scale pca data as input for k-means clustering
+kmeans_input <- pca_data_scale[1:3]
+
+
+
+# Cluster optimization prior to running k-means
+
+# check for optimal number of clusters using wss and silhouette methods
+sampling <- kmeans_input[sample(nrow(kmeans_input), 1000),] # sample 5000 random rows for cluster optimization
+
+fviz_nbclust(sampling, kmeans, method = 'wss', nstart=25, iter.max=50) # 4 clusters
+
+fviz_nbclust(sampling, kmeans, method = 'silhouette', nstart=25, iter.max=50) # 4 clusters
+```
+
+
+#### Fuzzy clustering (skip)
+
+Computationally intensive
+
+```{r, eval = FALSE}
+# cluster and combine with original data
+data_kmeans <- fcm(kmeans_input, centers=4, nstart=25)
+pca_kmeans <- cbind(pca_data[1:5], data_kmeans)
+```
+
+#### Regular k-means (hard clustering)
+
+```{r}
+# cluster and combine with original data
+data_kmeans <- kmeans(kmeans_input, centers=4)
+
+# Here, we are creating a new data frame that contains the first 2 PCs and original dataset, then renaming the data_kmeans$cluster column to simply say "Cluster". You can bind together as many of the PCs as you want. Binding the original, untransformed data is useful if you want to plot the raw values of any individual morphology measures downstream. 
+pca_kmeans <- cbind(pca_data[1:2], finaldata, as.data.frame(data_kmeans$cluster)) %>%
+  rename(Cluster=`data_kmeans$cluster`) 
+head(pca_kmeans,3)
+```
+
+### Plot k-means clusters in PC space
+
+```{r}
+plot <- clusterplots(pca_kmeans, "PC1", "PC2")
+plot
+
+# customization example
+plot + scale_colour_viridis_d() # customizeable example: add color scheme of choice 
+```
+
+### Cluster-specific measures on average for each morphology feature, relative to other clusters
+
+```{r}
+clusterfeatures(pca_kmeans, featurestart=14, featureend=40)
+```
+
+Compare the individual features across clusters to characterize the clusters:
+
+- Cluster 1 = ramified (largest territory span and branching complexity)
+- Cluster 2 = hypertrophic (average territory span, high branch thickness --> via pixel density in hull)
+- Cluster 3 = rod-like (greatest oblongness, lowest circularity)
+- Cluster 4 = ameboid (lowest territory span, high circularity, smallest branch lengths)
+
+
+
+
+# ColorByCluster
+
+### Formatting data for ColorByCluster input (Color coding in ImageJ)
+
+One image at a time
+
+```{r}
+# isolate out all the cells for your specific image of interest
+colorbycluster <- pca_kmeans %>% 
+  filter(RatID=="05", BrainRegion=="DGML", SlideSlice=="1-10") %>% select(c(Cluster, ID))
+head(colorbycluster)
+
+# save ".csv" to feed into ColorByCluster function in MicrogliaMorphology ImageJ macro
+write.csv(colorbycluster, str_c(mm.dir, "Rat05_DGML_1-10_data.csv"))
+```
+
+### Cluster characterization
+
+```{r}
+# calculate cluster percentages across variables of interest
+cp <- clusterpercentage(pca_kmeans, "Cluster", RatID, Drug, Diet, Sex, BrainRegion)
+cp$Drug <- factor(cp$Drug, levels=c("VEH","PLX"))
+cp$Diet <- factor(cp$Diet, levels=c("CON","EtOH"))
+cp$Sex <- factor(cp$Sex, levels=c("M","F"))
+
+# update cluster labels
+cp <- cp %>% mutate(Cluster = 
+                      case_when(Cluster=="1" ~ "Ramified",
+                                Cluster=="2" ~ "Hypertrophic",
+                                Cluster=="3" ~ "Rod-like",
+                                Cluster=="4" ~ "Ameboid"))
+
+# Quick check of cluster proportions when considering experimental variables of interest
+cp %>% 
+  filter(BrainRegion=="DGML") %>% # in this example, we filter for our brain region of interest
+  clusterpercentage_boxplots(Drug, Diet, Sex) # grouping variables
+
+# example graph of data given variables of interest
+cp %>% 
+  filter(BrainRegion=="DGML") %>%
+  ggplot(aes(x=Cluster, y=percentage, group=interaction(Cluster, Drug))) +
+  facet_wrap(~Diet) +
+  geom_boxplot(aes(group=interaction(Cluster, Drug), fill=Drug)) +
+  scale_fill_manual(values=c("#fde725","#482878")) +
+  geom_point(position=position_dodge(width=0.8), size=0.75, aes(group=interaction(Cluster,Drug), color=Sex)) +
+  ggtitle("PLX binge dataset: K-means clusters") +
+  labs(fill="Drug") +
+  theme_bw(base_size=14) +
+  theme(axis.text.x=element_text(angle=45, vjust=1, hjust=1))
+```
+
+## Statistical analysis
+
+### Microglia number and Density
+
+See "MGD56_IBA1.qmd" (note: need to reset working directory)
+
+`"/Users/erc2866/Library/CloudStorage/Box-Box/Nixon Lab/Lab Member Data Files/Erika/MGD/MGD56/MicrogliaMorphology/all/SkeletonResults"`
+
+### Cluster percentage changes at animal level, in response to experimental variables
+
+```{r}
+# prepare percentages dataset for downstream analysis
+stats.input <- cp
+stats.input$RatID <- factor(stats.input$RatID)
+stats.input$Cluster <- factor(stats.input$Cluster)
+stats.input$Drug <- factor(stats.input$Drug)
+stats.input$Diet <- factor(stats.input$Diet)
+stats.input$Sex <- factor(stats.input$Sex)
+
+stats.input %>% 
+  filter(BrainRegion == "DGML") %>%
+  ungroup() %>%
+  count(Cluster, Diet, Drug) %>% 
+  tidyr::complete(Cluster, Diet, Drug) %>% # check whether any combinations are missing
+  print(n = Inf)
+
+
+# run stats analysis for changes in cluster percentages, at the animal level
+# you can specify up to two posthoc comparisons (posthoc1 and posthoc2 arguments) - if you only have one set of posthocs to run, specify the same comparison twice for both arguments. you will just get the same results in output[[2]] and output[[3]].
+stats.testing <- stats_cluster.animal(data = stats.input %>% filter(BrainRegion=="DGML") %>% droplevels(), # drop unused factor levels 
+                                      model = "percentage ~ Cluster*Diet*Drug + (1|RatID)", 
+                                      posthoc1 = "~Drug|Cluster|Diet", 
+                                      posthoc2 = "~Drug|Cluster", adjust = "bonferroni")
+
+# reduce model complexity
+stats.testing <- stats_cluster.animal(data = stats.input %>% filter(BrainRegion=="DGML"), 
+                                      model = "percentage ~ Cluster*Diet + Cluster*Drug + (1|RatID)", 
+                                      posthoc1 = "~Drug|Cluster|Diet", 
+                                      posthoc2 = "~Drug|Cluster", adjust = "bonferroni")
+
+stats.testing[[1]] # anova
+stats.testing[[2]] # posthoc 1
+stats.testing[[3]] # posthoc 2
+stats.testing[[4]] # DHARMa model check
+stats.testing[[5]] # summary of model
+```
+
+### Individual morphology measures, at the animal level (averaged across cells for each animal)
+
+```{r}
+
+```
+
+
 
 ## Reset working directory
 
